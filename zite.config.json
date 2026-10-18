@@ -1,0 +1,12 @@
+{
+  "id": "fctvcfcktk",
+  "accessMode": "external",
+  "envVars": {
+    "ZITE_NATIONAL_ID_PEPPER": {
+      "description": "کلید مخفی برای هش‌کردن کد ملی (HMAC). یک رشته تصادفی طولانی (حداقل ۳۲ کاراکتر) وارد کنید و آن را تغییر ندهید."
+    },
+    "ZITE_SETUP_CODE": {
+      "description": "کد یک‌بارمصرف راه‌اندازی برای ساخت اولین مدیر ارشد سامانه"
+    }
+  }
+}

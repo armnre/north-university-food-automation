@@ -47,13 +47,13 @@ export default function CatalogPage() {
   const f = <T extends { name: string }>(xs: T[]) => xs.filter((x) => x.name.includes(q));
   return (
     <>
-      <PageHeader title="غذا، سلف و پیمانکار" subtitle="رکوردها حذف نمی‌شوند؛ برای خارج کردن از چرخه، غیرفعال کنید." />
+      <PageHeader title="سلف و پیمانکار" subtitle="رکوردها حذف نمی‌شوند؛ برای خارج کردن از چرخه، غیرفعال کنید. غذاها در «کتابخانه‌ی غذا» مدیریت می‌شوند." />
       <Input className="mb-4 max-w-sm" placeholder="جست‌وجو با نام" value={q} onChange={(e) => setQ(e.target.value)} />
-      <Tabs defaultValue="food">
-        <TabsList className="mb-4"><TabsTrigger value="food">غذاها</TabsTrigger><TabsTrigger value="cafeteria">سلف‌ها</TabsTrigger><TabsTrigger value="contractor">پیمانکاران</TabsTrigger></TabsList>
+      <Tabs defaultValue="cafeteria">
+        <TabsList className="mb-4"><TabsTrigger value="cafeteria">سلف‌ها</TabsTrigger><TabsTrigger value="contractor">پیمانکاران</TabsTrigger></TabsList>
         <TabsContent value="food" className="space-y-2">
           <Button size="sm" onClick={() => setItem({ kind: 'food', name: '', description: '', active: true, isDemo: false })}><Plus className="ms-1 h-4 w-4" />غذای جدید</Button>
-          {f(data.foods).length === 0 ? <EmptyState title="غذایی تعریف نشده است" /> : f(data.foods).map((x) => <Row key={x.id} title={x.name} sub={x.description} active={x.active} extra={x.isDemo ? <Pill tone="warning">نمایشی</Pill> : null} onEdit={() => setItem({ kind: 'food', ...x })} />)}
+          {f(data.foods).length === 0 ? <EmptyState title="غذایی تعریف نشده است" /> : f(data.foods).map((x) => <Row key={x.id} title={x.name} sub={x.description} active={x.active} extra={x.isDemo ? <Pill tone="warning">نمایشی</Pill> : null} onEdit={() => setItem({ kind: 'food', id: x.id, name: x.name, description: x.description, active: x.active, isDemo: x.isDemo })} />)}
         </TabsContent>
         <TabsContent value="cafeteria" className="space-y-2">
           <Button size="sm" onClick={() => setItem({ kind: 'cafeteria', name: '', location: '', contractorId: null, active: true })}><Plus className="ms-1 h-4 w-4" />سلف جدید</Button>

@@ -43,9 +43,8 @@ export default createEndpoint({
       if (current.reserved > 0 && (current.serviceDate !== input.serviceDate || current.mealType !== input.mealType || current.cafeteriaId !== input.cafeteriaId)) {
         fail('BAD_REQUEST', 'برای وعده‌ای که رزرو دارد، تاریخ، نوع وعده و سلف قابل تغییر نیست.');
       }
-      if ((current.priceRial !== input.priceRial || current.capacity !== input.capacity) && !input.reason?.trim()) fail('BAD_REQUEST', 'برای تغییر قیمت یا ظرفیت، ثبت دلیل الزامی است.');
       await db.mealOfferings.update({ id: input.id, record });
-      await audit(staffActor(staff), 'offering.update', 'MealOffering', input.id, { fromPrice: current.priceRial, toPrice: input.priceRial, fromCapacity: current.capacity, toCapacity: input.capacity, reason: input.reason ?? '' });
+      await audit(staffActor(staff), 'offering.update', 'MealOffering', input.id, { fromPrice: current.priceRial, toPrice: input.priceRial, fromCapacity: current.capacity, toCapacity: input.capacity });
       return { id: input.id };
     }
     const created = await db.mealOfferings.create({ record });

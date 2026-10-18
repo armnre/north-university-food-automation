@@ -19,7 +19,10 @@ export type Offering = {
 export type Catalog = {
   contractors: { id: string; name: string; contractNumber: string; contactPhone: string; active: boolean }[];
   cafeterias: { id: string; name: string; location: string; active: boolean; contractorId: string | null; contractorName: string }[];
-  foods: { id: string; name: string; description: string; active: boolean; isDemo: boolean }[];
+  foods: Food[];
+};
+export type Food = {
+  id: string; name: string; description: string; active: boolean; isDemo: boolean; category: string; defaultPriceRial: number | null; defaultCapacity: number | null; suitableMeals: string[]; imageUrl: string;
 };
 export type AdminReservation = {
   id: string; code: string; status: string; priceAtBooking: number; createdAt: string; offeringId: string; serviceDate: string; mealType: string; foodName: string;

@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { BarChart3, Bell, Building2, ClipboardList, FileSpreadsheet, LayoutDashboard, ScanLine, ScrollText, Settings, ShieldCheck, UsersRound, UtensilsCrossed, Wallet, GraduationCap } from 'lucide-react';
+import { BarChart3, Bell, BookOpen, ChefHat, Building2, ClipboardList, FileSpreadsheet, LayoutDashboard, ScanLine, ScrollText, Settings, ShieldCheck, UsersRound, UtensilsCrossed, Wallet, GraduationCap } from 'lucide-react';
 import Shell, { type NavItem } from '../../components/Shell';
 import { ROLES } from '../../lib/format';
 import type { StaffMe } from '../../lib/session';
@@ -16,6 +16,8 @@ import ReportsPage from './ReportsPage';
 import AuditPage from './AuditPage';
 import SettingsPage from './SettingsPage';
 import NotifyPage from './NotifyPage';
+import FoodsPage from './FoodsPage';
+import KitchenDashboard from './KitchenDashboard';
 
 type Def = NavItem & { perm: string; el: React.ReactNode };
 
@@ -23,12 +25,14 @@ export default function StaffApp({ me }: { me: StaffMe }) {
   const defs: Def[] = [
     { to: '/', label: 'داشبورد', icon: <LayoutDashboard />, perm: 'dashboard', el: <AdminDashboard />, mobile: true },
     { to: '/delivery', label: 'تحویل غذا (QR)', icon: <ScanLine />, perm: 'delivery', el: <DeliveryPage />, mobile: true },
+    { to: '/kitchen', label: 'داشبورد آشپزخانه', icon: <ChefHat />, perm: 'menu', el: <KitchenDashboard />, mobile: true },
     { to: '/contractor', label: 'گزارش پیمانکار', icon: <BarChart3 />, perm: 'contractor', el: <ReportsPage contractor />, mobile: true },
     { to: '/students', label: 'دانشجویان', icon: <GraduationCap />, perm: 'students', el: <StudentsPage />, mobile: true },
     { to: '/import', label: 'واردسازی Excel', icon: <FileSpreadsheet />, perm: 'import', el: <ImportPage /> },
+    { to: '/foods', label: 'کتابخانه‌ی غذا', icon: <BookOpen />, perm: 'foods', el: <FoodsPage />, mobile: true },
     { to: '/offerings', label: 'منو، وعده و ظرفیت', icon: <UtensilsCrossed />, perm: 'menu', el: <OfferingsPage />, mobile: true },
     { to: '/reservations', label: 'رزروها', icon: <ClipboardList />, perm: 'reservations', el: <ReservationsPage /> },
-    { to: '/catalog', label: 'غذا، سلف و پیمانکار', icon: <Building2 />, perm: 'catalog', el: <CatalogPage /> },
+    { to: '/catalog', label: 'سلف و پیمانکار', icon: <Building2 />, perm: 'catalog', el: <CatalogPage /> },
     { to: '/finance', label: 'امور مالی', icon: <Wallet />, perm: 'finance', el: <FinancePage />, mobile: true },
     { to: '/reports', label: 'گزارش‌ها', icon: <BarChart3 />, perm: 'reports', el: <ReportsPage /> },
     { to: '/notify', label: 'اعلان‌ها', icon: <Bell />, perm: 'notify', el: <NotifyPage /> },

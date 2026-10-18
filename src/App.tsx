@@ -27,7 +27,26 @@ export default function App() {
           <Gate />
         </BrowserRouter>
       </SessionProvider>
-      <Toaster position="top-center" richColors dir="rtl" />
+      <Toaster
+        position="top-center"
+        dir="rtl"
+        closeButton
+        gap={10}
+        offset={16}
+        toastOptions={{
+          duration: 4500,
+          classNames: {
+            toast: 'group !w-[calc(100vw-2rem)] sm:!w-[380px] !max-w-[calc(100vw-2rem)] !rounded-2xl !border !border-border/70 !bg-card/95 !backdrop-blur-xl !shadow-[0_12px_40px_-12px_hsl(var(--foreground)/0.25)] !px-4 !py-3 !gap-3 font-sans',
+            title: '!text-sm !font-semibold !leading-6 break-words',
+            description: '!text-xs !text-muted-foreground break-words',
+            icon: '!m-0',
+            error: '!border-destructive/30 [&_[data-icon]]:!text-destructive !bg-gradient-to-l !from-destructive/10 !to-card',
+            success: '!border-[hsl(var(--success)/0.35)] [&_[data-icon]]:!text-[hsl(var(--success))] !bg-gradient-to-l !from-[hsl(var(--success)/0.10)] !to-card',
+            warning: '[&_[data-icon]]:!text-[hsl(var(--warning))]',
+            closeButton: '!bg-card !border-border',
+          },
+        }}
+      />
     </div>
   );
 }

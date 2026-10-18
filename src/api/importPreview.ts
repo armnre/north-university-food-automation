@@ -19,7 +19,7 @@ const clean = (s: string) => String(s ?? '').replace(/[<>]/g, '').replace(/^[=+\
 
 export default createEndpoint({
   description: 'Validates uploaded student rows, stages them, and returns a preview (nothing is written to Students)',
-  inputSchema: z.object({ token: z.string(), fileName: z.string().max(200), policy: z.enum(['RejectAllOnError', 'SkipInvalidRows']), rows: z.array(rowSchema).max(MAX_ROWS) }),
+  inputSchema: z.object({ token: z.string(), fileName: z.string().max(200), policy: z.enum(['RejectAllOnError', 'SkipInvalidRows']), fullSync: z.boolean().default(true), rows: z.array(rowSchema).max(MAX_ROWS) }),
   outputSchema: z.any(),
   execute: async ({ input }) => {
     const staff = await requireStaff(input.token, 'import');
@@ -40,7 +40,7 @@ export default createEndpoint({
       return {
         rowNumber: r.rowNumber, studentNumber: sn, fullName: clean(r.fullName), faculty: clean(r.faculty), major: clean(r.major), degree: clean(r.degree),
         entryYear: year ? Number(year) : null, nationalIdHash: nid && isValidNationalId(nid) ? await hashNationalId(nid) : '', nationalIdLastDigits: nid.slice(-4),
-        errors, kind: 'new' as 'new' | 'changed' | 'unchanged' | 'error', changes: [] as string[],
+        errors, kind: 'new' as 'new' | 'changed' | 'unchanged' | 'returning' | 'error', changes: [] as string[],
       };
     }));
 
@@ -55,7 +55,7 @@ export default createEndpoint({
     // compare with existing students
     const sns = [...snCount.keys()];
     const hashes = [...nidCount.keys()];
-    const existing = sns.length ? (await zite.sql({ query: `SELECT id, "studentNumber", "fullName", "faculty", "major", "degree", "entryYear", "nationalIdHash" FROM "Students" WHERE "studentNumber" = ANY($1::text[]) OR "nationalIdHash" = ANY($2::text[])`, params: [sns, hashes] })).rows : [];
+    const existing = sns.length ? (await zite.sql({ query: `SELECT id, "studentNumber", "fullName", "faculty", "major", "degree", "entryYear", "nationalIdHash", "status" FROM "Students" WHERE "studentNumber" = ANY($1::text[]) OR "nationalIdHash" = ANY($2::text[])`, params: [sns, hashes] })).rows : [];
     const bySn = new Map(existing.map((e) => [String(e.studentNumber), e]));
     const byHash = new Map(existing.map((e) => [String(e.nationalIdHash), e]));
     for (const p of parsed) {
@@ -71,23 +71,31 @@ export default createEndpoint({
       if ((e.degree ?? '') !== p.degree) diff.push('مقطع');
       if ((e.entryYear == null ? null : Number(e.entryYear)) !== p.entryYear) diff.push('سال ورود');
       if ((e.nationalIdHash ?? '') !== p.nationalIdHash) diff.push('کد ملی');
-      p.kind = diff.length ? 'changed' : 'unchanged';
+      p.kind = e.status === 'Removed' ? 'returning' : diff.length ? 'changed' : 'unchanged';
       p.changes = diff;
     }
+
+    // reconciliation: students currently on the roster who are absent from this file
+    const missing = input.fullSync
+      ? (await zite.sql({ query: `SELECT id, "studentNumber", "fullName", "faculty", "major", "status" FROM "Students" WHERE COALESCE("status",'Active') <> 'Removed' AND NOT ("studentNumber" = ANY($1::text[])) ORDER BY "studentNumber"`, params: [sns] })).rows
+          .map((m) => ({ id: String(m.id), studentNumber: String(m.studentNumber ?? ''), fullName: String(m.fullName ?? ''), faculty: String(m.faculty ?? ''), major: String(m.major ?? ''), status: String(m.status ?? '') }))
+      : [];
+    const activeCount = Number((await zite.sql({ query: `SELECT COUNT(*) AS n FROM "Students" WHERE COALESCE("status",'Active') <> 'Removed'` })).rows[0]?.n ?? 0);
 
     const fingerprint = await sha256(JSON.stringify(parsed.map((p) => [p.studentNumber, p.nationalIdHash, p.fullName, p.faculty, p.major, p.degree, p.entryYear])));
     const dup = await zite.importBatches.findOne({ filters: { fileFingerprint: fingerprint, status: 'Committed' } });
     const errorRows = parsed.filter((p) => p.kind === 'error');
     const summary = {
       total: parsed.length, valid: parsed.length - errorRows.length, errors: errorRows.length,
-      new: parsed.filter((p) => p.kind === 'new').length, changed: parsed.filter((p) => p.kind === 'changed').length, unchanged: parsed.filter((p) => p.kind === 'unchanged').length,
+      new: parsed.filter((p) => p.kind === 'new').length, changed: parsed.filter((p) => p.kind === 'changed').length, unchanged: parsed.filter((p) => p.kind === 'unchanged').length, returning: parsed.filter((p) => p.kind === 'returning').length, removed: missing.length,
     };
-    const staged = parsed.filter((p) => p.kind === 'new' || p.kind === 'changed').map(({ errors: _e, changes: _c, ...rest }) => rest);
+    const staged = parsed.filter((p) => p.kind === 'new' || p.kind === 'changed' || p.kind === 'returning').map(({ errors: _e, changes: _c, ...rest }) => rest);
     const errorReport = errorRows.map((p) => ({ rowNumber: p.rowNumber, studentNumber: p.studentNumber, errors: p.errors }));
     const batch = await db.importBatches.create({
       record: {
         fileName: input.fileName, uploadedBy: [staff.id], status: 'Preview', policy: input.policy, totalRows: summary.total, validRows: summary.valid,
         errorRows: summary.errors, newRows: summary.new, changedRows: summary.changed, stagedData: JSON.stringify(staged), errorReport: JSON.stringify(errorReport), fileFingerprint: fingerprint,
+        fullSync: input.fullSync, removedRows: missing.length, returningRows: summary.returning, removalData: JSON.stringify(missing.map((m) => m.studentNumber)),
       },
     });
     await audit(staffActor(staff), 'import.preview', 'ImportBatch', batch.id, { fileName: input.fileName, ...summary });
@@ -95,6 +103,8 @@ export default createEndpoint({
       batchId: batch.id, summary, duplicateOfCommitted: !!dup, blocked: input.policy === 'RejectAllOnError' && summary.errors > 0,
       rows: parsed.slice(0, 1000).map((p) => ({ rowNumber: p.rowNumber, studentNumber: p.studentNumber, fullName: p.fullName, faculty: p.faculty, major: p.major, kind: p.kind, errors: p.errors, changes: p.changes })),
       errorReport,
+      removed: missing.slice(0, 2000),
+      massRemovalWarning: activeCount > 20 && missing.length > activeCount * 0.3,
     };
   },
 });

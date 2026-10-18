@@ -9,6 +9,8 @@ import { EmptyState, ErrorState, LoadingBlock, PageHeader, StatCard } from '../.
 import { MEALS, addDays, downloadCsv, faDate, faNum, rial, tehranToday } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import type { Catalog } from '../../lib/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@project/components/ui/tabs';
+import ManagementReports from '../../components/ManagementReports';
 
 type Row = { id: string; date: string; meal: string; cafeteria: string; food: string; capacity: number; reserved: number; delivered: number; cancelled: number; noShow: number; valueRial: number };
 type Data = { rows: Row[]; totals: Omit<Row, 'id' | 'date' | 'meal' | 'cafeteria' | 'food'>; scopedToContractor: boolean };
@@ -32,6 +34,10 @@ export default function ReportsPage({ contractor }: { contractor?: boolean }) {
         <Select value={meal} onValueChange={setMeal}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی وعده‌ها</SelectItem>{Object.entries(MEALS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select>
         {!contractor && <Select value={caf} onValueChange={setCaf}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی سلف‌ها</SelectItem>{cat.data?.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>}
       </div>
+      <Tabs defaultValue={contractor ? 'ops' : 'mgmt'}>
+      {!contractor && <TabsList className="mb-4"><TabsTrigger value="mgmt">مدیریتی و مالی</TabsTrigger><TabsTrigger value="ops">ریز وعده‌ها</TabsTrigger></TabsList>}
+      {!contractor && <TabsContent value="mgmt"><ManagementReports from={from} to={to} /></TabsContent>}
+      <TabsContent value="ops">
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data ? null : (
         <>
           <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -59,6 +65,8 @@ export default function ReportsPage({ contractor }: { contractor?: boolean }) {
           )}
         </>
       )}
+      </TabsContent>
+      </Tabs>
     </>
   );
 }

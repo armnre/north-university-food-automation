@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown, CalendarPlus, Copy } from 'lucide-react';
+import { CopyMenuDialog, DayMenuBuilder } from '../../components/MenuTools';
 import { toast } from 'sonner';
 import { catalogList, offeringSave, offeringsList, reservationsAdminList } from 'zitejs/api';
 import { Button } from '@project/components/ui/button';
@@ -10,7 +11,7 @@ import { Textarea } from '@project/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@project/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@project/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@project/components/ui/table';
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';
+import { EmptyState, ErrorNote, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';
 import { MEALS, RES_STATUS, addDays, errMsg, faDate, faDigits, faNum, faShort, isoToLocalInput, rial, tehranLocalToIso, tehranToday } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
@@ -40,6 +41,9 @@ export default function OfferingsPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<Offering | null>(null);
+  const [builder, setBuilder] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
 
   const rows = useMemo(() => {
     const xs = (data?.offerings ?? []).filter((o) => !q || o.foodName.includes(q) || o.cafeteriaName.includes(q));
@@ -55,24 +59,27 @@ export default function OfferingsPage() {
   };
   const openEdit = (o: Offering) => setForm({ id: o.id, serviceDate: o.serviceDate, mealType: o.mealType, foodId: o.foodId, cafeteriaId: o.cafeteriaId, priceRial: String(o.priceRial), capacity: String(o.capacity), reserveDeadline: isoToLocalInput(o.reserveDeadline), cancelDeadline: isoToLocalInput(o.cancelDeadline), active: o.active, notes: o.notes, reason: '', orig: o });
 
-  const sensitiveChange = !!form?.orig && (Number(form.priceRial) !== form.orig.priceRial || Number(form.capacity) !== form.orig.capacity);
   const formErr = form && (!form.foodId ? 'غذا را انتخاب کنید' : !form.cafeteriaId ? 'سلف را انتخاب کنید' : !/^\d+$/.test(form.priceRial) ? 'قیمت باید عدد صحیح (ریال) باشد'
     : !/^\d+$/.test(form.capacity) || Number(form.capacity) < 1 ? 'ظرفیت باید حداقل ۱ باشد' : form.orig && Number(form.capacity) < form.orig.reserved ? `ظرفیت کمتر از رزروهای فعلی (${faNum(form.orig.reserved)}) مجاز نیست`
-    : !form.reserveDeadline || !form.cancelDeadline ? 'مهلت‌ها را تعیین کنید' : sensitiveChange && form.reason.trim().length < 3 ? 'برای تغییر قیمت یا ظرفیت، دلیل را بنویسید' : '');
+    : !form.reserveDeadline || !form.cancelDeadline ? 'مهلت‌ها را تعیین کنید' : '');
 
   const save = async () => {
     if (!form || formErr) return;
-    setBusy(true);
+    setBusy(true); setSaveErr('');
     try {
       await offeringSave({ token, id: form.id, serviceDate: form.serviceDate, mealType: form.mealType as 'Lunch', foodId: form.foodId, cafeteriaId: form.cafeteriaId, priceRial: Number(form.priceRial), capacity: Number(form.capacity), reserveDeadline: tehranLocalToIso(form.reserveDeadline), cancelDeadline: tehranLocalToIso(form.cancelDeadline), active: form.active, notes: form.notes, reason: form.reason || undefined });
       toast.success('وعده ذخیره شد.'); setForm(null); reload();
-    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+    } catch (e) { setSaveErr(errMsg(e)); } finally { setBusy(false); }
   };
   const sortBtn = (k: SortKey, label: string) => <button className="inline-flex items-center gap-1" onClick={() => setSort({ k, dir: sort.k === k ? (-sort.dir as 1 | -1) : 1 })}>{label}<ArrowUpDown className="h-3 w-3" /></button>;
 
   return (
     <>
-      <PageHeader title="منو، وعده و ظرفیت" subtitle="تغییر قیمت روی رزروهای قبلی اثر ندارد؛ هر رزرو قیمت لحظه‌ی ثبت را نگه می‌دارد." actions={<Button onClick={openNew} disabled={!data?.catalog.foods.length || !data?.catalog.cafeterias.length}><Plus className="ms-1 h-4 w-4" />وعده‌ی جدید</Button>} />
+      <PageHeader title="منو، وعده و ظرفیت" subtitle="تغییر قیمت روی رزروهای قبلی اثر ندارد؛ هر رزرو قیمت لحظه‌ی ثبت را نگه می‌دارد." actions={<div className="flex flex-wrap gap-2">
+        <Button onClick={() => setBuilder(true)} disabled={!data?.catalog.foods.length || !data?.catalog.cafeterias.length}><CalendarPlus className="ms-1 h-4 w-4" />چیدن منوی روز</Button>
+        <Button variant="outline" onClick={() => setCopyOpen(true)}><Copy className="ms-1 h-4 w-4" />کپی منو</Button>
+        <Button variant="outline" onClick={() => { setSaveErr(''); openNew(); }} disabled={!data?.catalog.foods.length || !data?.catalog.cafeterias.length}><Plus className="ms-1 h-4 w-4" />تک وعده</Button>
+      </div>} />
       <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center">
         <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
           <Button size="icon" variant="ghost" aria-label="هفته قبل" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronRight className="h-4 w-4" /></Button>
@@ -83,7 +90,7 @@ export default function OfferingsPage() {
         <Select value={caf} onValueChange={setCaf}><SelectTrigger className="lg:w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی سلف‌ها</SelectItem>{data?.catalog.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
         <Input className="lg:max-w-xs" placeholder="جست‌وجوی غذا یا سلف" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {data && (!data.catalog.foods.length || !data.catalog.cafeterias.length) && <p className="mb-4 rounded-lg bg-accent px-3 py-2 text-sm text-accent-foreground">ابتدا از بخش «غذا، سلف و پیمانکار» حداقل یک غذا و یک سلف تعریف کنید.</p>}
+      {data && (!data.catalog.foods.length || !data.catalog.cafeterias.length) && <p className="mb-4 rounded-lg bg-accent px-3 py-2 text-sm text-accent-foreground">ابتدا حداقل یک غذا در «کتابخانه‌ی غذا» و یک سلف تعریف کنید.</p>}
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : rows.length === 0 ? <EmptyState title="در این بازه وعده‌ای تعریف نشده است" /> : (
         <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>
@@ -117,22 +124,23 @@ export default function OfferingsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><Label>تاریخ ارائه</Label><Input type="date" dir="ltr" value={form.serviceDate} disabled={!!form.orig?.reserved} onChange={(e) => setForm({ ...form, serviceDate: e.target.value })} /><p className="text-xs text-muted-foreground">{faDate(form.serviceDate)}</p></div>
               <div className="space-y-1.5"><Label>وعده</Label><Select value={form.mealType} disabled={!!form.orig?.reserved} onValueChange={(v) => setForm({ ...form, mealType: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(MEALS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label>غذا</Label><Select value={form.foodId || undefined} onValueChange={(v) => setForm({ ...form, foodId: v })}><SelectTrigger><SelectValue placeholder="انتخاب غذا" /></SelectTrigger><SelectContent>{data.catalog.foods.filter((f) => f.active || f.id === form.foodId).map((f) => <SelectItem key={f.id} value={f.id}>{f.name}{f.isDemo ? ' (نمایشی)' : ''}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1.5"><Label>غذا</Label><Select value={form.foodId || undefined} onValueChange={(v) => { const fd = data.catalog.foods.find((x) => x.id === v); setForm({ ...form, foodId: v, priceRial: form.priceRial || (fd?.defaultPriceRial != null ? String(fd.defaultPriceRial) : ''), capacity: form.capacity || (fd?.defaultCapacity != null ? String(fd.defaultCapacity) : '') }); }}><SelectTrigger><SelectValue placeholder="انتخاب غذا" /></SelectTrigger><SelectContent>{data.catalog.foods.filter((f) => f.active || f.id === form.foodId).map((f) => <SelectItem key={f.id} value={f.id}>{f.name}{f.isDemo ? ' (نمایشی)' : ''}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>سلف</Label><Select value={form.cafeteriaId || undefined} disabled={!!form.orig?.reserved} onValueChange={(v) => setForm({ ...form, cafeteriaId: v })}><SelectTrigger><SelectValue placeholder="انتخاب سلف" /></SelectTrigger><SelectContent>{data.catalog.cafeterias.filter((c) => c.active || c.id === form.cafeteriaId).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>قیمت (ریال)</Label><Input inputMode="numeric" dir="ltr" value={form.priceRial} onChange={(e) => setForm({ ...form, priceRial: e.target.value.replace(/\D/g, '') })} />{form.priceRial && <p className="text-xs text-muted-foreground">{rial(Number(form.priceRial))}</p>}</div>
               <div className="space-y-1.5"><Label>ظرفیت</Label><Input inputMode="numeric" dir="ltr" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value.replace(/\D/g, '') })} /></div>
               <div className="space-y-1.5"><Label>مهلت رزرو (به وقت تهران)</Label><Input type="datetime-local" dir="ltr" value={form.reserveDeadline} onChange={(e) => setForm({ ...form, reserveDeadline: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>مهلت لغو (به وقت تهران)</Label><Input type="datetime-local" dir="ltr" value={form.cancelDeadline} onChange={(e) => setForm({ ...form, cancelDeadline: e.target.value })} /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label>توضیحات برای دانشجو</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-              {sensitiveChange && <div className="space-y-1.5 sm:col-span-2"><Label>دلیل تغییر قیمت/ظرفیت</Label><Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div>}
               <label className="flex items-center justify-between text-sm sm:col-span-2">فعال و قابل رزرو<Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} /></label>
-              {formErr && <p className="text-sm text-destructive sm:col-span-2">{formErr}</p>}
+              <div className="sm:col-span-2"><ErrorNote message={saveErr || formErr || ''} onClose={saveErr ? () => setSaveErr('') : undefined} /></div>
             </div>
           )}
           <DialogFooter className="gap-2"><Button variant="outline" onClick={() => setForm(null)} disabled={busy}>انصراف</Button><Button onClick={save} disabled={busy || !!formErr}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ذخیره</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <OfferingReservations offering={view} onClose={() => setView(null)} />
+      {data && <DayMenuBuilder open={builder} onClose={() => setBuilder(false)} onDone={reload} token={token} catalog={data.catalog} initialDate={addDays(tehranToday(), 1)} />}
+      <CopyMenuDialog open={copyOpen} onClose={() => setCopyOpen(false)} onDone={reload} token={token} weekStart={weekStart} />
     </>
   );
 }

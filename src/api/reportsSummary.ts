@@ -10,16 +10,17 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input }) => {
     const staff = await requireStaff(input.token);
-    if (!['SuperAdmin', 'Finance', 'Contractor'].includes(staff.role)) fail('FORBIDDEN', 'شما مجوز مشاهده‌ی گزارش‌ها را ندارید.');
+    if (!['SuperAdmin', 'Finance', 'Contractor', 'StudentAffairs'].includes(staff.role)) fail('FORBIDDEN', 'شما مجوز مشاهده‌ی گزارش‌ها را ندارید.');
     const params: unknown[] = [input.from, input.to, tehranToday()];
     const where = [`o."serviceDate" BETWEEN $1::date AND $2::date`];
     if (input.cafeteriaId) { params.push(input.cafeteriaId); where.push(`c.id = $${params.length}`); }
     if (input.mealType) { params.push(input.mealType); where.push(`o."mealType" = $${params.length}`); }
     if (staff.role === 'Contractor') {
       const contractorId = first(staff.contractor);
-      if (!contractorId) fail('FORBIDDEN', 'حساب پیمانکار به قراردادی متصل نیست.');
+      if (contractorId) {
       params.push(contractorId);
       where.push(`EXISTS (SELECT 1 FROM "CafeteriasContractors" cc WHERE cc."cafeteriasId" = c.id AND cc."contractorsId" = $${params.length})`);
+      }
     }
     const r = await zite.sql({
       query: `SELECT o.id, to_char(o."serviceDate" AT TIME ZONE 'UTC','YYYY-MM-DD') AS date, o."mealType" AS meal, c."name" AS cafeteria, MAX(fd."name") AS food, o."capacity",

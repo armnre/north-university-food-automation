@@ -52,9 +52,22 @@ export const isoToLocalInput = (iso: string | null) => {
 /** Interprets a 'YYYY-MM-DDTHH:mm' value as Asia/Tehran wall time (UTC+03:30, no DST since 2022). */
 export const tehranLocalToIso = (v: string) => new Date(`${v}:00+03:30`).toISOString();
 
+const FALLBACK: Record<number, string> = {
+  400: 'اطلاعات واردشده معتبر نیست.', 401: 'نشست شما معتبر نیست؛ دوباره وارد شوید.', 403: 'شما به این بخش دسترسی ندارید.',
+  404: 'مورد درخواستی یافت نشد.', 409: 'این مورد با اطلاعات موجود تداخل دارد.', 429: 'تعداد تلاش‌ها زیاد است؛ کمی بعد دوباره امتحان کنید.',
+};
+/** Turns raw API errors like `API call failed (401): {"message":"..."}` into a clean Persian sentence. */
 export function errMsg(e: unknown) {
-  const m = e instanceof Error ? e.message : String(e ?? '');
-  return m && !/^(Internal|fetch|Failed to fetch|NetworkError)/i.test(m) ? m : 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
+  let m = e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : String(e ?? '');
+  const status = Number(m.match(/\((\d{3})\)/)?.[1] ?? 0);
+  const json = m.indexOf('{');
+  if (json >= 0) {
+    try { const o = JSON.parse(m.slice(json)); m = o.userFacingMessage || o.message || o.error || ''; } catch { /* keep */ }
+  }
+  m = m.replace(/^API call failed[^:]*:\s*/i, '').trim();
+  if (!m || /^(Internal|fetch|Failed to fetch|NetworkError|Unauthorized|Forbidden|Bad Request|Not Found)/i.test(m) || /[a-z]{4,}/i.test(m) && !/[\u0600-\u06FF]/.test(m))
+    return FALLBACK[status] ?? 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
+  return m;
 }
 
 export function downloadCsv(name: string, header: string[], rows: (string | number)[][]) {

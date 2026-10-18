@@ -9,13 +9,13 @@ export const db = zite as any;
 export type StaffRole = 'SuperAdmin' | 'StudentAffairs' | 'Contractor' | 'Operator' | 'Finance';
 export type Perm =
   | 'dashboard' | 'students' | 'import' | 'users' | 'catalog' | 'menu' | 'reservations'
-  | 'delivery' | 'finance' | 'financeWrite' | 'reports' | 'audit' | 'settings' | 'notify' | 'contractor';
+  | 'delivery' | 'finance' | 'financeWrite' | 'reports' | 'audit' | 'settings' | 'notify' | 'contractor' | 'foods';
 
 export const ROLE_PERMS: Record<StaffRole, Perm[]> = {
-  SuperAdmin: ['dashboard', 'students', 'import', 'users', 'catalog', 'menu', 'reservations', 'delivery', 'finance', 'reports', 'audit', 'settings', 'notify'],
-  StudentAffairs: ['dashboard', 'students', 'import', 'notify'],
-  Contractor: ['contractor'],
-  Operator: ['delivery'],
+  SuperAdmin: ['dashboard', 'students', 'import', 'users', 'catalog', 'foods', 'menu', 'reservations', 'delivery', 'finance', 'reports', 'audit', 'settings', 'notify'],
+  StudentAffairs: ['dashboard', 'students', 'import', 'users', 'reports', 'finance', 'notify'],
+  Contractor: ['contractor', 'menu', 'foods'],
+  Operator: ['delivery', 'menu', 'foods'],
   Finance: ['dashboard', 'finance', 'financeWrite', 'reports'],
 };
 

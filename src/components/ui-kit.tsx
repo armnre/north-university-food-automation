@@ -99,3 +99,15 @@ export function Section({ title, children, actions, className }: { title?: strin
     </section>
   );
 }
+
+/** Inline, animated error banner that wraps gracefully on any screen width. */
+export function ErrorNote({ message, onClose }: { message: string; onClose?: () => void }) {
+  if (!message) return null;
+  return (
+    <div role="alert" className="animate-in fade-in slide-in-from-top-1 flex w-full min-w-0 items-start gap-3 rounded-xl border border-destructive/25 bg-gradient-to-l from-destructive/10 to-destructive/[0.03] p-3 text-sm shadow-sm">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive"><AlertTriangle className="h-4 w-4" /></span>
+      <p className="min-w-0 flex-1 break-words pt-1 leading-6 text-foreground">{message}</p>
+      {onClose && <button type="button" onClick={onClose} aria-label="بستن" className="shrink-0 rounded-md px-1.5 py-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive">✕</button>}
+    </div>
+  );
+}

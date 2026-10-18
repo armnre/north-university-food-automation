@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@project/components/ui
 import { toast } from 'sonner';
 import { Emblem } from '../components/ui-kit';
 import { errMsg } from '../lib/format';
+import { ErrorNote } from '../components/ui-kit';
 import { useSession } from '../lib/session';
 
 function Field({ id, label, error, ...rest }: { id: string; label: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -39,7 +40,7 @@ function StudentForm() {
     <form onSubmit={submit} className="space-y-4" noValidate>
       <Field id="sn" label="شماره دانشجویی" inputMode="numeric" autoComplete="username" dir="ltr" value={sn} onChange={(e) => setSn(e.target.value)} />
       <Field id="nid" label="کد ملی" inputMode="numeric" autoComplete="off" dir="ltr" maxLength={10} type="password" value={nid} onChange={(e) => setNid(e.target.value)} error={nid && nid.length !== 10 ? 'کد ملی ۱۰ رقم است' : undefined} />
-      {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</p>}
+      <ErrorNote message={err} onClose={() => setErr('')} />
       <Button type="submit" className="h-11 w-full text-base" disabled={!valid || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ورود به سامانه</Button>
       <p className="text-center text-xs text-muted-foreground">ورود فقط با اطلاعات ثبت‌شده توسط معاونت دانشجویی امکان‌پذیر است.</p>
     </form>
@@ -63,7 +64,7 @@ function StaffForm() {
     <form onSubmit={submit} className="space-y-4">
       <Field id="u" label="نام کاربری" dir="ltr" autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
       <Field id="p" label="رمز عبور" dir="ltr" type="password" autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} />
-      {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</p>}
+      <ErrorNote message={err} onClose={() => setErr('')} />
       <Button type="submit" className="h-11 w-full text-base" disabled={!u || !p || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ورود کارکنان</Button>
     </form>
   );

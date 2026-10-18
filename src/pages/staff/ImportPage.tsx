@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { importCancel, importCommit, importList, importPreview } from 'zitejs/api';
 import { Button } from '@project/components/ui/button';
 import { Label } from '@project/components/ui/label';
+import { Switch } from '@project/components/ui/switch';
 import { Progress } from '@project/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@project/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@project/components/ui/select';
@@ -31,11 +32,13 @@ const FIELDS = [
 ] as const;
 type FieldKey = (typeof FIELDS)[number]['key'];
 type Preview = {
-  batchId: string; summary: { total: number; valid: number; errors: number; new: number; changed: number; unchanged: number }; duplicateOfCommitted: boolean; blocked: boolean;
+  batchId: string; summary: { total: number; valid: number; errors: number; new: number; changed: number; unchanged: number; returning: number; removed: number }; duplicateOfCommitted: boolean; blocked: boolean;
+  removed: { id: string; studentNumber: string; fullName: string; faculty: string; major: string; status: string }[]; massRemovalWarning: boolean;
   rows: { rowNumber: number; studentNumber: string; fullName: string; faculty: string; major: string; kind: string; errors: string[]; changes: string[] }[];
   errorReport: { rowNumber: number; studentNumber: string; errors: string[] }[];
 };
 const NONE = '__none__';
+const KIND: Record<string, string> = { error: 'خطا', new: 'جدید', changed: 'تغییر', unchanged: 'بدون تغییر', returning: 'بازگشتی' };
 const STEPS = ['انتخاب فایل', 'تطبیق ستون‌ها', 'پیش‌نمایش و بررسی', 'گزارش نهایی'];
 
 function guessMapping(headers: string[]) {
@@ -58,10 +61,11 @@ export default function ImportPage() {
   const [map, setMap] = useState<Partial<Record<FieldKey, string>>>({});
   const [policy, setPolicy] = useState<'RejectAllOnError' | 'SkipInvalidRows'>('RejectAllOnError');
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [fullSync, setFullSync] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [result, setResult] = useState<{ written: number } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'error' | 'new' | 'changed'>('all');
+  const [result, setResult] = useState<{ written: number; removed?: number } | null>(null);
+  const [filter, setFilter] = useState<'all' | 'error' | 'new' | 'changed' | 'returning' | 'removed'>('all');
   const history = useLoad(async (t) => (await importList({ token: t })) as { batches: { id: string; fileName: string; status: string; totalRows: number; validRows: number; errorRows: number; newRows: number; changedRows: number; errorReport: string; createdAt: string; uploadedBy: string }[] });
 
   const reset = () => { setStep(0); setFile(null); setHeaders([]); setRaw([]); setMap({}); setPreview(null); setResult(null); };
@@ -95,7 +99,7 @@ export default function ImportPage() {
 
   const runPreview = async () => {
     setBusy(true);
-    try { setPreview((await importPreview({ token, fileName: file!.name, policy, rows: buildRows() })) as Preview); setStep(2); history.reload(); }
+    try { setPreview((await importPreview({ token, fileName: file!.name, policy, fullSync, rows: buildRows() })) as Preview); setStep(2); history.reload(); }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
   const commit = async () => {
@@ -155,6 +159,10 @@ export default function ImportPage() {
               <label className="flex items-start gap-2 text-sm"><RadioGroupItem value="SkipInvalidRows" className="mt-1" /><span><b>ثبت ردیف‌های معتبر</b> — ردیف‌های خطادار کنار گذاشته و در گزارش خطا ذکر می‌شوند.</span></label>
             </RadioGroup>
           </div>
+          <label className="mt-6 flex items-start gap-3 rounded-lg border bg-secondary/40 p-3 text-sm">
+            <Switch checked={fullSync} onCheckedChange={setFullSync} className="mt-0.5" />
+            <span><b>مغایرت‌گیری کامل با فهرست فعلی</b> — این فایل فهرست کامل و به‌روز دانشجویان است. دانشجویانی که در سامانه هستند ولی در این فایل نیستند «حذف‌شده از فهرست» می‌شوند (سوابق مالی و رزروشان حفظ می‌شود ولی دیگر نمی‌توانند وارد شوند). اگر فایل فقط شامل دانشجویان جدید است، این گزینه را خاموش کنید.</span>
+          </label>
           <div className="mt-6 flex justify-between gap-2">
             <Button variant="outline" onClick={reset}>انتخاب فایل دیگر</Button>
             <Button onClick={runPreview} disabled={!mappingOk || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}بررسی و پیش‌نمایش</Button>
@@ -164,29 +172,35 @@ export default function ImportPage() {
 
       {step === 2 && preview && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             <StatCard label="کل ردیف‌ها" value={faNum(preview.summary.total)} />
             <StatCard label="معتبر" value={faNum(preview.summary.valid)} />
             <StatCard label="دارای خطا" value={faNum(preview.summary.errors)} />
             <StatCard label="دانشجوی جدید" value={faNum(preview.summary.new)} />
             <StatCard label="تغییر اطلاعات" value={faNum(preview.summary.changed)} hint={`${faNum(preview.summary.unchanged)} بدون تغییر`} />
+            <StatCard label="بازگشتی" value={faNum(preview.summary.returning)} hint="قبلاً حذف شده بودند" />
+            <StatCard label="حذف از فهرست" value={faNum(preview.summary.removed)} hint="در فایل جدید نیستند" />
           </div>
+          {preview.massRemovalWarning && <div className="mt-4 flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle className="h-5 w-5 shrink-0" />هشدار: بیش از ۳۰٪ دانشجویان فعلی در این فایل نیستند و حذف خواهند شد. مطمئن شوید فایل کامل است.</div>}
           {preview.duplicateOfCommitted && <div className="mt-4 flex gap-2 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] p-3 text-sm"><AlertTriangle className="h-5 w-5 text-[hsl(var(--warning))]" />این فایل با محتوای یکسان قبلاً یک‌بار واردسازی شده است.</div>}
           {preview.blocked && <div className="mt-4 flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle className="h-5 w-5" />طبق سیاست «رد کامل»، تا رفع خطاها امکان ثبت وجود ندارد. گزارش خطا را دانلود و فایل را اصلاح کنید.</div>}
           <Section className="mt-4" title="پیش‌نمایش" actions={
             <div className="flex flex-wrap gap-2">
-              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}><SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">همه</SelectItem><SelectItem value="error">دارای خطا</SelectItem><SelectItem value="new">جدید</SelectItem><SelectItem value="changed">تغییریافته</SelectItem></SelectContent></Select>
+              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}><SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">همه</SelectItem><SelectItem value="error">دارای خطا</SelectItem><SelectItem value="new">جدید</SelectItem><SelectItem value="changed">تغییریافته</SelectItem><SelectItem value="returning">بازگشتی</SelectItem><SelectItem value="removed">حذف از فهرست</SelectItem></SelectContent></Select>
               {preview.errorReport.length > 0 && <Button size="sm" variant="outline" onClick={() => downloadErrors(preview.errorReport, 'import-errors.csv')}><Download className="ms-1 h-4 w-4" />گزارش خطا</Button>}
+              <Button size="sm" variant="outline" onClick={() => downloadCsv('import-diff.csv', ['نتیجه', 'شماره دانشجویی', 'نام', 'رشته', 'جزئیات'], [...preview.rows.map((r) => [KIND[r.kind] ?? r.kind, r.studentNumber, r.fullName, r.major, r.errors.join(' | ') || r.changes.join('، ')]), ...preview.removed.map((m) => ['حذف از فهرست', m.studentNumber, m.fullName, m.major, ''])])}><Download className="ms-1 h-4 w-4" />گزارش مغایرت</Button>
             </div>
           }>
             <div className="max-h-[460px] overflow-auto rounded-lg border">
               <Table>
                 <TableHeader><TableRow><TableHead className="text-right">ردیف</TableHead><TableHead className="text-right">شماره دانشجویی</TableHead><TableHead className="text-right">نام</TableHead><TableHead className="hidden text-right md:table-cell">رشته</TableHead><TableHead className="text-right">وضعیت</TableHead><TableHead className="text-right">جزئیات</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {shown.slice(0, 500).map((r) => (
+                  {filter === 'removed' ? preview.removed.slice(0, 500).map((m) => (
+                    <TableRow key={m.id} className="bg-destructive/5"><TableCell>—</TableCell><TableCell className="num">{m.studentNumber}</TableCell><TableCell>{m.fullName}</TableCell><TableCell className="hidden md:table-cell">{m.major}</TableCell><TableCell><Pill tone="danger">حذف از فهرست</Pill></TableCell><TableCell className="text-xs text-muted-foreground">در فایل جدید وجود ندارد</TableCell></TableRow>
+                  )) : shown.slice(0, 500).map((r) => (
                     <TableRow key={r.rowNumber} className={r.kind === 'error' ? 'bg-destructive/5' : ''}>
                       <TableCell className="num">{faNum(r.rowNumber)}</TableCell><TableCell className="num">{r.studentNumber}</TableCell><TableCell>{r.fullName}</TableCell><TableCell className="hidden md:table-cell">{r.major}</TableCell>
-                      <TableCell><Pill tone={r.kind === 'error' ? 'danger' : r.kind === 'new' ? 'success' : r.kind === 'changed' ? 'warning' : 'muted'}>{({ error: 'خطا', new: 'جدید', changed: 'تغییر', unchanged: 'بدون تغییر' } as Record<string, string>)[r.kind]}</Pill></TableCell>
+                      <TableCell><Pill tone={r.kind === 'error' ? 'danger' : r.kind === 'new' ? 'success' : r.kind === 'changed' ? 'warning' : r.kind === 'returning' ? 'info' : 'muted'}>{KIND[r.kind]}</Pill></TableCell>
                       <TableCell className="text-xs text-muted-foreground">{r.errors.join('، ') || (r.changes.length ? `تغییر: ${r.changes.join('، ')}` : '')}</TableCell>
                     </TableRow>
                   ))}
@@ -197,7 +211,7 @@ export default function ImportPage() {
           {busy && <Progress className="mt-4" value={66} />}
           <div className="mt-4 flex justify-between gap-2">
             <Button variant="outline" onClick={cancel} disabled={busy}>لغو واردسازی</Button>
-            <Button onClick={() => setConfirmOpen(true)} disabled={busy || preview.blocked || preview.summary.new + preview.summary.changed === 0}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}تأیید نهایی و ثبت</Button>
+            <Button onClick={() => setConfirmOpen(true)} disabled={busy || preview.blocked || preview.summary.new + preview.summary.changed + preview.summary.returning + preview.summary.removed === 0}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}تأیید نهایی و ثبت</Button>
           </div>
         </>
       )}
@@ -207,7 +221,7 @@ export default function ImportPage() {
           <div className="flex flex-col items-center py-8 text-center">
             <CheckCircle2 className="h-14 w-14 text-[hsl(var(--success))]" />
             <h2 className="mt-3 text-xl font-bold">واردسازی کامل شد</h2>
-            <p className="mt-2 text-muted-foreground">{faNum(result.written)} رکورد ثبت/به‌روزرسانی شد · {faNum(preview.summary.errors)} ردیف خطادار کنار گذاشته شد.</p>
+            <p className="mt-2 text-muted-foreground">{faNum(result.written)} رکورد ثبت/به‌روزرسانی شد · {faNum(result.removed ?? 0)} دانشجو از فهرست حذف شد · {faNum(preview.summary.errors)} ردیف خطادار کنار گذاشته شد.</p>
             <div className="mt-5 flex gap-2">
               {preview.errorReport.length > 0 && <Button variant="outline" onClick={() => downloadErrors(preview.errorReport, 'import-errors.csv')}><Download className="ms-1 h-4 w-4" />دانلود گزارش خطا</Button>}
               <Button onClick={reset}>واردسازی جدید</Button>
@@ -240,7 +254,7 @@ export default function ImportPage() {
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>تأیید نهایی واردسازی</AlertDialogTitle>
-            <AlertDialogDescription>{preview && `${faNum(preview.summary.new)} دانشجوی جدید ثبت و اطلاعات ${faNum(preview.summary.changed)} دانشجو به‌روزرسانی می‌شود. این عملیات در سوابق ممیزی ثبت خواهد شد.`}</AlertDialogDescription>
+            <AlertDialogDescription>{preview && `${faNum(preview.summary.new)} دانشجوی جدید اضافه، ${faNum(preview.summary.changed)} دانشجو به‌روزرسانی، ${faNum(preview.summary.returning)} دانشجوی بازگشتی فعال و ${faNum(preview.summary.removed)} دانشجو از فهرست حذف می‌شود.`}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2"><AlertDialogCancel>انصراف</AlertDialogCancel><AlertDialogAction onClick={commit}>ثبت نهایی</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>

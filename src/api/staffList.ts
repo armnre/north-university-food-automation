@@ -8,14 +8,15 @@ export default createEndpoint({
   inputSchema: z.object({ token: z.string() }),
   outputSchema: z.any(),
   execute: async ({ input }) => {
-    await requireStaff(input.token, 'users');
+    const me = await requireStaff(input.token, 'users');
+    const hide = me.role === 'SuperAdmin' ? '' : `WHERE u."role" NOT IN ('SuperAdmin','StudentAffairs')`;
     const r = await zite.sql({
       query: `SELECT u.id, u."username", u."fullName", u."role", u."status",
         (SELECT c.id FROM "ContractorsStaffUsers" l JOIN "Contractors" c ON c.id=l."contractorsId" WHERE l."staffUsersId"=u.id LIMIT 1) AS "contractorId",
         (SELECT c."name" FROM "ContractorsStaffUsers" l JOIN "Contractors" c ON c.id=l."contractorsId" WHERE l."staffUsersId"=u.id LIMIT 1) AS "contractorName",
         (SELECT c.id FROM "CafeteriasStaffUsers" l JOIN "Cafeterias" c ON c.id=l."cafeteriasId" WHERE l."staffUsersId"=u.id LIMIT 1) AS "cafeteriaId",
         (SELECT c."name" FROM "CafeteriasStaffUsers" l JOIN "Cafeterias" c ON c.id=l."cafeteriasId" WHERE l."staffUsersId"=u.id LIMIT 1) AS "cafeteriaName"
-        FROM "StaffUsers" u ORDER BY u."username"`,
+        FROM "StaffUsers" u ${hide} ORDER BY u."username"`,
     });
     return {
       users: r.rows.map((x) => ({

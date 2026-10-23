@@ -805,7 +805,7 @@ export const importPreviewResponseSchema = z.object({
 
 export const importCommitRequestSchema = z.object({
   /** شمارهٔ ردیف‌هایی که معاونت تعارض کد ملی‌شان را صریحاً تأیید کرده است. */
-  approvedConflicts: z.array(z.number().int().min(1).max(100_000)).max(10_000).optional(),
+  approvedConflicts: z.array(z.number().int().min(1).max(100_000)).max(25_000).optional(),
 });
 
 export const importCommitResponseSchema = z.object({

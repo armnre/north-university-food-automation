@@ -4,7 +4,6 @@ import { AppError } from '../lib/errors.js';
 import { getClientIp } from '../lib/request-context.js';
 import { resolveSessionCookieName } from '../lib/cookies.js';
 import { resolveAuthContext } from '../services/auth.service.js';
-import { findValidSession, touchSession } from '../services/session.service.js';
 import type { AuthContext, ServiceDeps } from '../types.js';
 
 declare module 'fastify' {
@@ -55,13 +54,9 @@ export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Pro
   app.decorate('authenticate', async (request: FastifyRequest) => {
     const token = readSessionToken(request, deps);
     if (!token) throw new AppError('UNAUTHORIZED', ERROR_MESSAGES_FA.UNAUTHORIZED);
-    const auth = await resolveAuthContext(deps, token);
+    const auth = await resolveAuthContext(deps, token, { touch: true });
     if (!auth) throw new AppError('SESSION_EXPIRED', ERROR_MESSAGES_FA.SESSION_EXPIRED);
     request.auth = auth;
-
-    // تمدید لغزان نشست (بدون بلوکه کردن پاسخ)
-    const session = await findValidSession(deps, token);
-    if (session) void touchSession(deps, session).catch(() => undefined);
   });
 
   app.decorate('optionalAuth', async (request: FastifyRequest) => {

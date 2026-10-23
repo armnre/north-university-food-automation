@@ -77,12 +77,19 @@ export async function findValidSession(deps: ServiceDeps, token: string): Promis
  * تمدید لغزان: اگر کمتر از نیمی از عمر نشست باقی مانده باشد، تا `now + ttl`
  * تمدید می‌شود (بدون عبور از سقف مطلق). `last_seen_at` همیشه به‌روز می‌شود.
  */
-export async function touchSession(deps: ServiceDeps, session: ValidSession): Promise<void> {
+export async function touchSession(
+  deps: ServiceDeps,
+  session: Pick<ValidSession, 'id' | 'subjectType' | 'expiresAt' | 'absoluteExpiresAt' | 'lastSeenAt'>,
+): Promise<void> {
   const now = new Date();
   const ttlMs = ttlHoursFor(deps, session.subjectType as SubjectType) * 3_600_000;
   const remainingMs = session.expiresAt.getTime() - now.getTime();
-  const renewed =
-    remainingMs < ttlMs / 2 ? new Date(Math.min(now.getTime() + ttlMs, session.absoluteExpiresAt.getTime())) : session.expiresAt;
+  const needsRenewal = remainingMs < ttlMs / 2;
+  const lastSeenMs = session.lastSeenAt instanceof Date ? session.lastSeenAt.getTime() : 0;
+  if (!needsRenewal && now.getTime() - lastSeenMs < 60_000) {
+    return;
+  }
+  const renewed = needsRenewal ? new Date(Math.min(now.getTime() + ttlMs, session.absoluteExpiresAt.getTime())) : session.expiresAt;
 
   await deps.db.update(sessions).set({ lastSeenAt: now, expiresAt: renewed }).where(eq(sessions.id, session.id));
 }

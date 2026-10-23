@@ -57,6 +57,35 @@ export async function ensureEmployeeAccount(
   return again[0].id;
 }
 
+/** قفل ردیف `accounts` (`FOR UPDATE OF a`) و خواندن هم‌زمان اطلاعات دارندهٔ حساب در یک پرس‌وجوی واحد. */
+export async function lockAccountHolderForUpdate(target: Tx, accountId: string): Promise<AccountHolder | null> {
+  const rows = await target.execute(
+    sql`
+      SELECT a.id AS "accountId", a.kind, a.customer_group AS "customerGroup", a.balance_rial::text AS "balanceRial", a.is_active AS "isActive",
+             s.id AS "studentId", s.student_number AS "studentIdentifier", s.full_name AS "studentName", s.status AS "studentStatus",
+             e.id AS "employeeId", e.username AS "employeeIdentifier", e.full_name AS "employeeName", e.status AS "employeeStatus"
+      FROM accounts a
+      LEFT JOIN students s ON s.id = a.student_id
+      LEFT JOIN employees e ON e.id = a.employee_id
+      WHERE a.id = ${accountId}
+      FOR UPDATE OF a`,
+  );
+  const row = (rows as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
+  if (!row) return null;
+  const kind = String(row.kind) === 'Student' ? 'Student' : 'Employee';
+  return {
+    accountId: String(row.accountId),
+    kind,
+    customerGroup: String(row.customerGroup) as CustomerGroup,
+    balanceRial: Number(row.balanceRial ?? 0),
+    isActive: Boolean(row.isActive),
+    holderId: kind === 'Student' ? String(row.studentId) : String(row.employeeId),
+    identifier: kind === 'Student' ? String(row.studentIdentifier ?? '') : String(row.employeeIdentifier ?? ''),
+    fullName: kind === 'Student' ? String(row.studentName ?? '') : String(row.employeeName ?? ''),
+    subjectStatus: kind === 'Student' ? String(row.studentStatus ?? 'Active') : String(row.employeeStatus ?? 'Active'),
+  };
+}
+
 /** اطلاعات کامل دارندهٔ حساب (برای منو، رزرو، تحویل و مالی). */
 export async function getAccountHolder(target: Tx | ServiceDeps['db'], accountId: string): Promise<AccountHolder | null> {
   const rows = await target.execute(

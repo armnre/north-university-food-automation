@@ -12,7 +12,7 @@ import type { Actor, CustomerAuth, ServiceDeps, Tx } from '../types.js';
 import { writeAudit } from './audit.service.js';
 import { lockAccountsForUpdate, postLedger } from './ledger.service.js';
 import { getSettings } from './settings.service.js';
-import { assertAccountUsable, getAccountHolder } from './account.service.js';
+import { assertAccountUsable, getAccountHolder, lockAccountHolderForUpdate } from './account.service.js';
 import { alertFinanceAndAdmins, createNotification, employeeMobile, queueSms } from './notification.service.js';
 import { reserveInLockedTx, validateOfferingForCheckout } from './reservation.service.js';
 import { rawSql } from '../db/raw.js';
@@ -192,82 +192,122 @@ export async function startCheckout(
     fail('VALIDATION', 'امکان انتخاب تکراری یک غذا در یک سفارش وجود ندارد.');
   }
 
-  const holder = assertAccountUsable(await getAccountHolder(deps.db, input.auth.accountId));
+  const holder =
+    input.auth.balanceRial !== undefined
+      ? {
+          accountId: input.auth.accountId,
+          kind: input.auth.kind === 'student' ? ('Student' as const) : ('Employee' as const),
+          customerGroup: input.auth.customerGroup,
+          balanceRial: input.auth.balanceRial,
+          isActive: true,
+          holderId: input.auth.kind === 'student' ? input.auth.studentId : input.auth.employeeId,
+          identifier: input.auth.kind === 'student' ? input.auth.studentNumber : input.auth.username,
+          fullName: input.auth.fullName,
+          subjectStatus: input.auth.status,
+        }
+      : assertAccountUsable(await getAccountHolder(deps.db, input.auth.accountId));
+  assertAccountUsable(holder);
   const paymentIdemKey = `checkout:${holder.accountId}:${input.idempotencyKey}`;
+  const firstInstantKey = `checkout-instant:${holder.accountId}:${input.idempotencyKey}:0:${uniqueIds[0]}`;
+
+  const firstCheck = await validateOfferingForCheckout(deps.db, {
+    accountId: holder.accountId,
+    customerGroup: holder.customerGroup,
+    offeringId: uniqueIds[0]!,
+    paymentIdemKey,
+    instantIdemKey: firstInstantKey,
+  });
 
   // بازپخش درخواست تکراری در حالت درگاه
-  const existingPayment = await deps.db.select().from(payments).where(eq(payments.idempotencyKey, paymentIdemKey)).limit(1);
-  if (existingPayment[0]) {
-    const p = existingPayment[0];
-    const redirectUrl =
-      p.authority && p.gateway === 'zarinpal'
-        ? `https://www.zarinpal.com/pg/StartPay/${p.authority}`
-        : p.authority
-          ? `/api/v1/payments/sandbox/redirect?authority=${p.authority}&amount=${Number(p.amountRial)}`
-          : null;
-    return {
-      mode: 'gateway',
-      paymentId: p.id,
-      redirectUrl,
-      totalRial: Number(p.totalRial),
-      creditUsedRial: Number(p.creditUsedRial),
-      payableRial: Number(p.amountRial),
-      creditRemainingNote: null,
-      items: p.resultJson?.items ?? [],
-      balanceRial: holder.balanceRial,
-      replay: true,
-      message: 'درخواست پرداخت پیش‌تر ثبت شده است.',
-    };
+  if (firstCheck.hasPayment) {
+    const existingPayment = await deps.db.select().from(payments).where(eq(payments.idempotencyKey, paymentIdemKey)).limit(1);
+    if (existingPayment[0]) {
+      const p = existingPayment[0];
+      const redirectUrl =
+        p.authority && p.gateway === 'zarinpal'
+          ? `https://www.zarinpal.com/pg/StartPay/${p.authority}`
+          : p.authority
+            ? `/api/v1/payments/sandbox/redirect?authority=${p.authority}&amount=${Number(p.amountRial)}`
+            : null;
+      return {
+        mode: 'gateway',
+        paymentId: p.id,
+        redirectUrl,
+        totalRial: Number(p.totalRial),
+        creditUsedRial: Number(p.creditUsedRial),
+        payableRial: Number(p.amountRial),
+        creditRemainingNote: null,
+        items: p.resultJson?.items ?? [],
+        balanceRial: holder.balanceRial,
+        replay: true,
+        message: 'درخواست پرداخت پیش‌تر ثبت شده است.',
+      };
+    }
   }
 
   // بازپخش درخواست تکراری در حالت فوری (بدون درگاه)
-  const firstInstantKey = `checkout-instant:${holder.accountId}:${input.idempotencyKey}:0:${uniqueIds[0]}`;
-  const priorInstant = await deps.db.select().from(reservations).where(eq(reservations.idempotencyKey, firstInstantKey)).limit(1);
-  if (priorInstant[0]) {
-    const replayItems: PaymentSettlementItemResult[] = [];
-    let total = 0;
-    for (const [idx, offeringId] of uniqueIds.entries()) {
-      const k = `checkout-instant:${holder.accountId}:${input.idempotencyKey}:${idx}:${offeringId}`;
-      const r = (await deps.db.select().from(reservations).where(eq(reservations.idempotencyKey, k)).limit(1))[0];
-      if (r) {
-        total += Number(r.priceAtBooking);
-        replayItems.push({
-          offeringId,
-          foodName: 'وعدهٔ رزروشده',
-          serviceDate: r.serviceDate,
-          mealSlotTitle: '',
-          priceRial: Number(r.priceAtBooking),
-          ok: true,
-          reservationId: r.id,
-          code: r.code,
-          error: null,
-          errorCode: null,
-        });
+  if (firstCheck.hasInstant) {
+    const priorInstant = await deps.db.select().from(reservations).where(eq(reservations.idempotencyKey, firstInstantKey)).limit(1);
+    if (priorInstant[0]) {
+      const replayItems: PaymentSettlementItemResult[] = [];
+      let total = 0;
+      for (const [idx, offeringId] of uniqueIds.entries()) {
+        const k = `checkout-instant:${holder.accountId}:${input.idempotencyKey}:${idx}:${offeringId}`;
+        const r = (await deps.db.select().from(reservations).where(eq(reservations.idempotencyKey, k)).limit(1))[0];
+        if (r) {
+          total += Number(r.priceAtBooking);
+          replayItems.push({
+            offeringId,
+            foodName: 'وعدهٔ رزروشده',
+            serviceDate: r.serviceDate,
+            mealSlotTitle: '',
+            priceRial: Number(r.priceAtBooking),
+            ok: true,
+            reservationId: r.id,
+            code: r.code,
+            error: null,
+            errorCode: null,
+          });
+        }
       }
+      return {
+        mode: 'instant',
+        paymentId: null,
+        redirectUrl: null,
+        totalRial: total,
+        creditUsedRial: total,
+        payableRial: 0,
+        creditRemainingNote: null,
+        items: replayItems,
+        balanceRial: holder.balanceRial,
+        replay: true,
+        message: 'این سفارش پیش‌تر با موفقیت ثبت شده است.',
+      };
     }
-    return {
-      mode: 'instant',
-      paymentId: null,
-      redirectUrl: null,
-      totalRial: total,
-      creditUsedRial: total,
-      payableRial: 0,
-      creditRemainingNote: null,
-      items: replayItems,
-      balanceRial: holder.balanceRial,
-      replay: true,
-      message: 'این سفارش پیش‌تر با موفقیت ثبت شده است.',
-    };
   }
 
-  // اعتبارسنجی همهٔ آیتم‌های سبد پیش از هرگونه اقدام مالی
+  if (firstCheck.failReason) firstCheck.failReason();
+  const validatedSlots = new Map<string, string>();
   const validatedItems: PaymentCartItem[] = [];
-  for (const offeringId of uniqueIds) {
-    const valid = await validateOfferingForCheckout(deps.db, {
+  if (firstCheck.offering) {
+    validatedSlots.set(firstCheck.offering.offeringId, firstCheck.offering.slotStartTime);
+    validatedItems.push({
+      offeringId: firstCheck.offering.offeringId,
+      priceAtStartRial: firstCheck.offering.priceRial,
+      foodName: firstCheck.offering.foodName,
+      serviceDate: firstCheck.offering.serviceDate,
+      mealSlotTitle: firstCheck.offering.mealSlotTitle,
+    });
+  }
+  for (const offeringId of uniqueIds.slice(1)) {
+    const nextCheck = await validateOfferingForCheckout(deps.db, {
       accountId: holder.accountId,
       customerGroup: holder.customerGroup,
       offeringId,
     });
+    if (nextCheck.failReason) nextCheck.failReason();
+    const valid = nextCheck.offering!;
+    validatedSlots.set(valid.offeringId, valid.slotStartTime);
     validatedItems.push({
       offeringId: valid.offeringId,
       priceAtStartRial: valid.priceRial,
@@ -286,14 +326,12 @@ export async function startCheckout(
   // حالت ۱: اعتبار فعلی کل مبلغ را پوشش می‌دهد ⇒ رزرو اتمیک بدون درگاه
   if (holder.balanceRial >= totalRial) {
     return deps.db.transaction(async (tx) => {
-      const locked = await lockAccountsForUpdate(tx, [holder.accountId]);
-      const lockedAccount = locked.get(holder.accountId);
-      if (!lockedAccount) fail('NOT_FOUND', 'حساب کیف پول یافت نشد.');
-      const freshHolder = assertAccountUsable(await getAccountHolder(tx, holder.accountId));
+      const freshHolder = assertAccountUsable(await lockAccountHolderForUpdate(tx, holder.accountId));
       if (freshHolder.balanceRial < totalRial) {
         fail('INSUFFICIENT_BALANCE', 'موجودی اعتبار شما هم‌زمان تغییر کرده است؛ لطفاً دوباره اقدام کنید.');
       }
 
+      let lastBalance = freshHolder.balanceRial;
       const settledItems: PaymentSettlementItemResult[] = [];
       for (const [idx, item] of validatedItems.entries()) {
         const res = await reserveInLockedTx(tx, deps, {
@@ -308,7 +346,20 @@ export async function startCheckout(
           note: 'رزرو با کسر خودکار از اعتبار کیف پول',
           ip: input.ip,
           userAgent: input.userAgent,
+          skipIdempotencyCheck: idx === 0,
+          prelockedAccount: { id: holder.accountId, balanceRial: lastBalance, isActive: freshHolder.isActive },
+          prevalidated: {
+            foodName: item.foodName,
+            serviceDate: item.serviceDate,
+            slotStartTime: validatedSlots.get(item.offeringId) ?? '12:00',
+            priceRial: item.priceAtStartRial,
+          },
         });
+        if (res.balanceRial !== undefined) {
+          lastBalance = res.balanceRial;
+        } else if (!res.replay) {
+          lastBalance -= res.priceRial;
+        }
         settledItems.push({
           offeringId: item.offeringId,
           foodName: item.foodName,
@@ -323,7 +374,6 @@ export async function startCheckout(
         });
       }
 
-      const finalBalance = (await lockAccountsForUpdate(tx, [holder.accountId])).get(holder.accountId)?.balanceRial ?? 0;
       return {
         mode: 'instant' as const,
         paymentId: null,
@@ -333,7 +383,7 @@ export async function startCheckout(
         payableRial: 0,
         creditRemainingNote: null,
         items: settledItems,
-        balanceRial: finalBalance,
+        balanceRial: lastBalance,
         replay: false,
         message: 'رزرو شما با استفاده از اعتبار کیف پول با موفقیت ثبت شد.',
       };

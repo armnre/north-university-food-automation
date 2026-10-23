@@ -8,15 +8,15 @@ test.describe('سناریوی سرتاسری دانشجو و اپراتور سل
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.locator('html')).toHaveAttribute('lang', 'fa');
 
-    // ورود دانشجو با شماره دانشجویی و کد ملی
+    // ورود دانشجو با شماره دانشجویی و کد ملی معتبر (رقم کنترلی صحیح)
     await page.getByLabel('شماره دانشجویی').fill('402123456');
-    await page.getByLabel('کد ملی').fill('0010000018');
+    await page.getByLabel('کد ملی').fill('0010000011');
     await page.getByRole('button', { name: 'ورود به سامانه' }).click();
 
-    await expect(page.getByText('سارا محمدی').first()).toBeVisible();
+    await expect(page.getByText(/سلام، سارا/)).toBeVisible();
 
     // رفتن به منوی غذا و افزودن دو غذای متفاوت در همان وعدهٔ ناهار
-    await page.goto('/menu');
+    await page.getByRole('link', { name: /رزرو غذا/ }).click();
     const addButtons = page.getByRole('button', { name: 'افزودن' });
     await expect(addButtons).toHaveCount(2);
     await addButtons.nth(0).click();

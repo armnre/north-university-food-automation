@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   await createStudent(db, {
     studentNumber: '402123456',
     fullName: 'سارا محمدی',
-    nationalId: '0010000018',
+    nationalId: '0010000011',
     balanceRial: 300_000,
     pepper,
   });

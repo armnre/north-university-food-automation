@@ -5,7 +5,7 @@ export type MyReservation = {
   mealSlotTitle: string;
 };
 export type MyReservations = { today: string; reservations: MyReservation[] };
-export type WalletTx = { id: string; trackingCode: string; type: string; amountRial: number; reason: string; createdAt: string; balanceAfter: number };
+export type WalletTx = { id: string; trackingCode: string; type: string; typeLabel?: string; amountRial: number; reason: string; createdAt: string; balanceAfter: number };
 export type Wallet = { balanceRial: number; transactions: WalletTx[] };
 export type MenuOffering = {
   id: string; serviceDate: string; mealSlot: string; mealSlotTitle: string; myPriceRial: number | null; status: string; foodName: string; foodDescription: string; cafeteriaName: string; priceRial: number; capacity: number;

@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Loader2, ReceiptText, Trash2, Wallet, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, ReceiptText, Trash2, XCircle } from 'lucide-react';
 import { studentCheckout } from '../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@project/components/ui/sheet';
@@ -28,7 +27,6 @@ type CheckoutResult = {
 type Props = { open: boolean; onOpenChange: (o: boolean) => void; cart: MenuOffering[]; onRemove: (id: string) => void; onPaid: () => void };
 
 export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPaid }: Props) {
-  const navigate = useNavigate();
   const [step, setStep] = useState<'invoice' | 'done'>('invoice');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -123,18 +121,8 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
             </p>
             {result.shortfallRial > 0 && (
               <div className="mt-4 rounded-2xl bg-[hsl(var(--warning)/0.12)] p-4 text-right">
-                <p className="text-sm font-bold text-[hsl(var(--warning))]">کسری موجودی: {tomanText(result.shortfallRial)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">برای رزرو وعده‌های باقی‌مانده، کیف پول خود را شارژ کنید.</p>
-                <Button
-                  className="mt-3 h-11 w-full rounded-2xl"
-                  onClick={() => {
-                    close(false);
-                    navigate('/wallet');
-                  }}
-                >
-                  <Wallet className="ms-2 h-4 w-4" />
-                  شارژ و ادامه
-                </Button>
+                <p className="text-sm font-bold text-[hsl(var(--warning))]">مبلغ باقی‌مانده: {tomanText(result.shortfallRial)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">پرداخت مستقیم از درگاه بانکی برای تکمیل سفارش استفاده می‌شود.</p>
               </div>
             )}
             <ul className="mt-5 space-y-2 text-right">

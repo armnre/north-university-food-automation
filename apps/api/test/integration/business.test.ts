@@ -856,181 +856,43 @@ describe('مالی و دفتر کل', () => {
     await appClient.end();
   });
 
-  it('پرداخت آنلاین وقتی غیرفعال است ⇒ راهنمای شارژ دستی، بدون ثبت اعتبار', async () => {
-    const student = await createStudent(db);
+  it('شارژ مستقیم کیف پول و برداشت شبا حذف شده‌اند و DATA_ENCRYPTION_KEY اختیاری است', async () => {
+    const student = await createStudent(db, { balanceRial: 250_000 });
     const client = await loginStudentClient(student);
-    const response = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
-    expect(response.status).toBe(409);
-    expect((response.body as { error: { code: string; message: string } }).error.code).toBe('PAYMENT_GATEWAY_DISABLED');
-    const credits = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM ledger_transactions WHERE type = 'OnlinePayment'`);
-    expect(credits[0]?.n).toBe(0);
+
+    // مسیرهای شارژ مستقیم کیف پول و برداشت بانکی حذف شده‌اند
+    const topupRemoved = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
+    expect(topupRemoved.status).toBe(404);
+
+    const withdrawRemoved = await client.post('/api/v1/me/withdrawals', { amountRial: 100_000, iban: 'IR820540102680020817909002' });
+    expect(withdrawRemoved.status).toBe(404);
+
+    const finance = await createStaff(db, { role: 'Finance' });
+    const finClient = await loginStaff(ctx.app, finance.username, finance.password);
+    const finWithdrawalsRemoved = await finClient.get('/api/v1/finance/withdrawals');
+    expect(finWithdrawalsRemoved.status).toBe(404);
+
+    // کیف پول داخلی فقط موجودی اعتبار بازگشتی و گردش دفتر کل را برمی‌گرداند
+    const wallet = await client.get<{ balanceRial: number; transactions: unknown[] }>('/api/v1/me/wallet');
+    expect(wallet.status).toBe(200);
+    expect((wallet.body as { balanceRial: number }).balanceRial).toBe(250_000);
+    expect('withdrawalEnabled' in (wallet.body as Record<string, unknown>)).toBe(false);
+    expect('minTopupRial' in (wallet.body as Record<string, unknown>)).toBe(false);
+
+    // DATA_ENCRYPTION_KEY در تنظیمات محیطی اختیاری است
+    const { readEnv, testEnv } = await import('../../src/config/env.js');
+    const envWithoutEnc = testEnv({ DATA_ENCRYPTION_KEY: '' });
+    const parsed = readEnv(envWithoutEnc);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.env.DATA_ENCRYPTION_KEY).toBeUndefined();
+
+    // جلوگیری از open redirect در مسیر بازگشت
+    const { sanitizeReturnTo } = await import('../../src/services/payment.service.js');
+    expect(sanitizeReturnTo('https://evil.example.com/x')).toBe('/wallet');
+    expect(sanitizeReturnTo('//evil.example.com')).toBe('/wallet');
+    expect(sanitizeReturnTo('/reservations')).toBe('/reservations');
+
     await assertLedgerInvariants();
-  });
-
-  it('درگاه sandbox: callback تکراری و هم‌زمان فقط یک واریز ثبت می‌کند', async () => {
-    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
-    try {
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
-
-      const topup = await client.post('/api/v1/me/wallet/topup', { amountRial: 1_000_000, returnTo: '/wallet' });
-      expect(topup.status).toBe(200);
-      const paymentId = (topup.body as { paymentId: string }).paymentId;
-      expect((topup.body as { enabled: boolean }).enabled).toBe(true);
-
-      const callbackUrl = `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=OK`;
-      // سه callback هم‌زمان
-      const results = await Promise.all([
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
-      ]);
-      expect(results.every((r) => r.status === 200)).toBe(true);
-
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(1_000_000);
-
-      const payments = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM ledger_transactions WHERE type = 'OnlinePayment'`);
-      expect(payments[0]?.n).toBe(1);
-      await assertLedgerInvariants();
-    } finally {
-      await sandboxApp.close();
-    }
-  });
-
-  it('callback با وضعیت ناموفق ⇒ پرداخت Failed و بدون واریز', async () => {
-    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
-    try {
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
-      const topup = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
-      const paymentId = (topup.body as { paymentId: string }).paymentId;
-
-      const failed = await createTestClient(sandboxApp.app).raw(
-        'GET',
-        `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=NOK`,
-      );
-      expect(failed.status).toBe(200);
-      expect(failed.raw).toContain('ناموفق');
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(0);
-      const rows = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [paymentId]);
-      expect(rows[0]?.status).toBe('Failed');
-    } finally {
-      await sandboxApp.close();
-    }
-  });
-
-  it('بازگشت به مسیر بیرونی در returnTo رد می‌شود (open redirect)', async () => {
-    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
-    try {
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
-      const response = await client.post('/api/v1/me/wallet/topup', { amountRial: 200_000, returnTo: 'https://evil.example.com/x' });
-      expect(response.status).toBe(400);
-    } finally {
-      await sandboxApp.close();
-    }
-  });
-
-  it('برداشت وجه: مسدودی، تأیید، پرداخت و رد هم‌زمان', async () => {
-    const app = await buildTestApp();
-    try {
-      const student = await createStudent(db, { balanceRial: 1_000_000 });
-      // فعال‌سازی برداشت
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('withdrawal_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
-
-      const client = await loginStudentClient(student);
-      const created = await client.post('/api/v1/me/withdrawals', { amountRial: 400_000, iban: 'IR820540102680020817909002' });
-      expect(created.status).toBe(200);
-      const withdrawalId = (created.body as { id: string }).id;
-
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(600_000); // مبلغ مسدود شد
-      await assertLedgerInvariants();
-
-      const finance = await createStaff(db, { role: 'Finance' });
-      const finClient = await loginStaff(app.app, finance.username, finance.password);
-
-      // تأیید هم‌زمان از دو نشست ⇒ فقط یکی موفق
-      const finClient2 = await loginStaff(app.app, finance.username, finance.password);
-      const approvals = await Promise.all([
-        finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, { action: 'approve' }),
-        finClient2.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, { action: 'approve' }),
-      ]);
-      const okCount = approvals.filter((r) => r.status === 200).length;
-      expect(okCount).toBe(1);
-      expect(approvals.filter((r) => r.status === 409).length).toBe(1);
-
-      const paid = await finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, {
-        action: 'markPaid',
-        bankReference: 'BANK-123456',
-      });
-      expect(paid.status).toBe(200);
-      expect((paid.body as { status: string }).status).toBe('Paid');
-
-      const paidAgain = await finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, {
-        action: 'markPaid',
-        bankReference: 'BANK-123456',
-      });
-      expect(paidAgain.status).toBe(409);
-
-      // شبا در فهرست فقط ماسک‌شده دیده می‌شود
-      const list = await finClient.get<{ withdrawals: { ibanMasked: string }[] }>('/api/v1/finance/withdrawals');
-      expect(list.raw).not.toContain('IR820540102680020817909002');
-      expect((list.body as { withdrawals: { ibanMasked: string }[] }).withdrawals[0]!.ibanMasked).toContain('•');
-
-      // رد درخواست دوم ⇒ بازگشت وجه به کیف پول
-      const second = await client.post('/api/v1/me/withdrawals', { amountRial: 200_000, iban: 'IR820540102680020817909002' });
-      const secondId = (second.body as { id: string }).id;
-      const rejected = await finClient.post(`/api/v1/finance/withdrawals/${secondId}/review`, {
-        action: 'reject',
-        reason: 'شبا اشتباه است',
-      });
-      expect(rejected.status).toBe(200);
-      const [afterReject] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      // ۱٬۰۰۰٬۰۰۰ − ۴۰۰٬۰۰۰ (پرداخت‌شده) − ۲۰۰٬۰۰۰ (مسدود) + ۲۰۰٬۰۰۰ (آزادشده) = ۶۰۰٬۰۰۰
-      expect(Number(afterReject?.balance_rial)).toBe(600_000);
-      await assertLedgerInvariants();
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('شبای نامعتبر رد می‌شود', async () => {
-    const student = await createStudent(db, { balanceRial: 1_000_000 });
-    await db.execute(
-      sql`INSERT INTO system_settings (key, value) VALUES ('withdrawal_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-    );
-    const client = await loginStudentClient(student);
-    const response = await client.post('/api/v1/me/withdrawals', { amountRial: 100_000, iban: 'IR000000000000000000000000' });
-    expect(response.status).toBe(400);
-    expect((response.body as { error: { message: string } }).error.message).toContain('شبا');
   });
 });
 

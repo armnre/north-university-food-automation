@@ -2,11 +2,10 @@ import { sql } from 'drizzle-orm';
 import { payments } from '../db/schema/index.js';
 import { AppError, fail } from '../lib/errors.js';
 import { randomHex } from '../lib/crypto.js';
-import type { CustomerAuth, ServiceDeps } from '../types.js';
+import type { ServiceDeps } from '../types.js';
 import { writeAudit } from './audit.service.js';
 import { postLedger } from './ledger.service.js';
-import { getSettings } from './settings.service.js';
-import { assertAccountUsable, getAccountHolder } from './account.service.js';
+import { getAccountHolder } from './account.service.js';
 import { alertSuperAdmins, createNotification, employeeMobile, queueSms } from './notification.service.js';
 import { rawSql } from '../db/raw.js';
 
@@ -103,90 +102,6 @@ export function resolveGateway(deps: ServiceDeps): PaymentGateway | null {
   if (deps.env.ZARINPAL_MERCHANT_ID) return createZarinpalGateway(deps.env.ZARINPAL_MERCHANT_ID);
   if (deps.env.ALLOW_SANDBOX_GATEWAY && deps.env.NODE_ENV !== 'production') return createSandboxGateway();
   return null;
-}
-
-/** شروع شارژ کیف پول: ساخت پرداخت Pending و آدرس ریدایرکت به درگاه. */
-export async function createTopup(
-  deps: ServiceDeps,
-  input: { auth: CustomerAuth; amountRial: number; returnTo: string; ip: string },
-): Promise<{ paymentId: string; redirectUrl: string | null; enabled: boolean; message: string }> {
-  const settings = await getSettings(deps);
-  if (!settings.onlinePaymentEnabled) {
-    return {
-      paymentId: '',
-      redirectUrl: null,
-      enabled: false,
-      message: 'پرداخت اینترنتی فعال نیست. شارژ کیف پول توسط امور مالی انجام می‌شود.',
-    };
-  }
-
-  const amount = Math.trunc(Number(input.amountRial));
-  if (!Number.isInteger(amount) || amount <= 0) fail('VALIDATION', 'مبلغ شارژ نامعتبر است.');
-  if (amount < settings.minTopupRial) fail('VALIDATION', `حداقل مبلغ شارژ ${settings.minTopupRial} ریال است.`);
-  if (amount > settings.maxTopupRial) fail('VALIDATION', `حداکثر مبلغ شارژ ${settings.maxTopupRial} ریال است.`);
-
-  const gateway = resolveGateway(deps);
-  if (!gateway) {
-    return {
-      paymentId: '',
-      redirectUrl: null,
-      enabled: false,
-      message: 'درگاه پرداخت پیکربندی نشده است. شارژ کیف پول توسط امور مالی انجام می‌شود.',
-    };
-  }
-
-  const holder = assertAccountUsable(await getAccountHolder(deps.db, input.auth.accountId));
-  const returnTo = sanitizeReturnTo(input.returnTo);
-  const base = deps.env.PUBLIC_BASE_URL || '';
-  const callbackUrl = `${base}/api/v1/payments/zarinpal/callback`;
-
-  const [payment] = await deps.db
-    .insert(payments)
-    .values({
-      accountId: holder.accountId,
-      gateway: gateway.name,
-      amountRial: amount,
-      status: 'Pending',
-      idempotencyKey: `topup:${holder.accountId}:${randomHex(12)}`,
-      returnTo,
-      authority: null,
-    })
-    .returning({ id: payments.id, idempotencyKey: payments.idempotencyKey });
-
-  let redirectUrl: string;
-  try {
-    const result = await gateway.request({
-      amountRial: amount,
-      returnUrl: `${callbackUrl}?paymentId=${payment!.id}`,
-      description: 'شارژ کیف پول سامانه تغذیه دانشگاه شمال',
-      orderId: payment!.id,
-    });
-    redirectUrl = result.redirectUrl;
-    await deps.db
-      .update(payments)
-      .set({ authority: result.authority })
-      .where(sql`${payments.id} = ${payment!.id}`);
-  } catch (error) {
-    await deps.db
-      .update(payments)
-      .set({ status: 'Failed', lastError: 'gateway_request_failed' })
-      .where(sql`${payments.id} = ${payment!.id}`);
-    throw error instanceof AppError ? error : new AppError('PAYMENT_NEEDS_REVIEW', 'ارتباط با درگاه پرداخت برقرار نشد. دوباره تلاش کنید.');
-  }
-
-  await writeAudit(deps.db, {
-    actor:
-      input.auth.kind === 'student'
-        ? { type: 'Student', id: input.auth.studentId, label: input.auth.studentNumber }
-        : { type: 'Employee', id: input.auth.employeeId, label: input.auth.username },
-    action: 'payment.create',
-    targetType: 'Payment',
-    targetId: payment!.id,
-    details: { amountRial: amount, gateway: gateway.name },
-    ip: input.ip,
-  });
-
-  return { paymentId: payment!.id, redirectUrl, enabled: true, message: 'برای تکمیل شارژ به درگاه پرداخت هدایت شوید.' };
 }
 
 /** فقط مسیرهای داخلی مجازند (جلوگیری از open redirect). */

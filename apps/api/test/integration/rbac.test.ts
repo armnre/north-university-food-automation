@@ -79,13 +79,6 @@ const STAFF_ENDPOINTS: EndpointSpec[] = [
     },
   },
   { method: 'GET', path: '/api/v1/finance/ledger', allow: ['finance'] },
-  { method: 'GET', path: '/api/v1/finance/withdrawals', allow: ['finance', 'financeWrite', 'withdrawalReview'] },
-  {
-    method: 'POST',
-    path: `/api/v1/finance/withdrawals/${FAKE_UUID}/review`,
-    allow: ['withdrawalReview', 'financeWrite'],
-    body: { action: 'approve' },
-  },
   { method: 'GET', path: '/api/v1/finance/reconcile', allow: ['finance', 'audit'] },
   { method: 'GET', path: '/api/v1/imports', allow: ['import'] },
   { method: 'POST', path: `/api/v1/imports/${FAKE_UUID}/commit`, allow: ['import'], body: {} },
@@ -139,8 +132,6 @@ const CUSTOMER_ENDPOINTS: EndpointSpec[] = [
   { method: 'GET', path: '/api/v1/me/notifications', allow: [] },
   { method: 'POST', path: '/api/v1/me/reservations', allow: [], body: { offeringId: FAKE_UUID, idempotencyKey: 'rbac-test-2' } },
   { method: 'POST', path: '/api/v1/me/checkout', allow: [], body: { items: [{ offeringId: FAKE_UUID }], idempotencyKey: 'rbac-test-3' } },
-  { method: 'POST', path: '/api/v1/me/wallet/topup', allow: [], body: { amountRial: 100000, returnTo: '/wallet' } },
-  { method: 'POST', path: '/api/v1/me/withdrawals', allow: [], body: { amountRial: 100000, iban: 'IR000000000000000000000000' } },
 ];
 
 beforeAll(async () => {

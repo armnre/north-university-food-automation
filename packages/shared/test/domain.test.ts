@@ -172,6 +172,6 @@ describe('تنظیمات سامانه', () => {
     expect(validateSettingValue('online_payment_enabled', 'maybe').ok).toBe(false);
     expect(validateSettingValue('online_payment_enabled', 'TRUE').ok).toBe(true);
     expect(validateSettingValue('supportText', 'x'.repeat(3001)).ok).toBe(false);
-    expect(validateSettingValue('min_topup_rial', '10').ok).toBe(false);
+    expect(validateSettingValue('min_gateway_payable_rial', '10').ok).toBe(false);
   });
 });

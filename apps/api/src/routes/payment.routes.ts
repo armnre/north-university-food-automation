@@ -78,8 +78,7 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             200: z.object({
               enabled: z.boolean(),
               gateway: z.string(),
-              minTopupRial: z.number().int(),
-              maxTopupRial: z.number().int(),
+              minPayableRial: z.number().int(),
               message: z.string(),
             }),
           },
@@ -96,9 +95,8 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
         return {
           enabled,
           gateway: merchantConfigured ? 'zarinpal' : sandbox ? 'sandbox' : 'none',
-          minTopupRial: settings.minTopupRial,
-          maxTopupRial: settings.maxTopupRial,
-          message: enabled ? 'پرداخت اینترنتی فعال است.' : 'پرداخت اینترنتی فعال نیست؛ شارژ کیف پول توسط امور مالی انجام می‌شود.',
+          minPayableRial: settings.minGatewayPayableRial,
+          message: enabled ? 'پرداخت اینترنتی فعال است.' : 'درگاه پرداخت اینترنتی در حال حاضر فعال نیست.',
         };
       },
     );

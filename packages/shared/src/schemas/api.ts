@@ -340,7 +340,7 @@ export const meMenuResponseSchema = z.object({
     }),
   ),
   policyNote: z.string(),
-  settings: z.object({ onlinePaymentEnabled: z.boolean(), withdrawalEnabled: z.boolean() }),
+  settings: z.object({ onlinePaymentEnabled: z.boolean() }),
 });
 
 export const createReservationRequestSchema = z.object({
@@ -643,10 +643,6 @@ export const walletResponseSchema = z.object({
   balanceRial: z.number().int(),
   customerGroup: z.string(),
   onlinePaymentEnabled: z.boolean(),
-  withdrawalEnabled: z.boolean(),
-  minTopupRial: z.number().int(),
-  maxTopupRial: z.number().int(),
-  heldRial: z.number().int(),
   transactions: z.array(
     z.object({
       id: uuidSchema,
@@ -659,48 +655,6 @@ export const walletResponseSchema = z.object({
       balanceAfter: z.number().int(),
     }),
   ),
-});
-
-export const topupRequestSchema = z.object({
-  amountRial: z.number().int().min(1).max(500_000_000),
-  /** فقط مسیرهای داخلی مجازند. */
-  returnTo: z
-    .string()
-    .max(200)
-    .refine((v) => /^\/[a-zA-Z0-9/_?=&.%-]*$/.test(v), 'آدرس بازگشت باید یک مسیر داخلی باشد.')
-    .default('/wallet'),
-});
-
-export const topupResponseSchema = z.object({
-  paymentId: uuidSchema,
-  redirectUrl: z.string().nullable(),
-  enabled: z.boolean(),
-  message: z.string(),
-});
-
-export const withdrawalCreateRequestSchema = z.object({
-  amountRial: z.number().int().min(10_000).max(500_000_000),
-  iban: z.string().trim().min(10).max(40),
-});
-
-export const withdrawalDtoSchema = z.object({
-  id: uuidSchema,
-  amountRial: z.number().int(),
-  ibanMasked: z.string(),
-  status: z.string(),
-  createdAt: z.string(),
-  reviewedAt: z.string().nullable(),
-  paidAt: z.string().nullable(),
-  reason: z.string().nullable(),
-  bankReference: z.string().nullable(),
-  holderIdentifier: z.string().nullable(),
-  holderName: z.string().nullable(),
-});
-
-export const withdrawalReviewRequestSchema = z.object({
-  action: z.enum(['approve', 'reject', 'markPaid']),
-  reason: z.string().trim().max(500).optional(),
-  bankReference: z.string().trim().max(120).optional(),
 });
 
 // ---------------------------------------------------------------------------

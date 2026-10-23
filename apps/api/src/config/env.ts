@@ -54,7 +54,11 @@ export const envSchema = z
 
     CSRF_SECRET: z.string().min(32, 'CSRF_SECRET باید حداقل ۳۲ کاراکتر باشد'),
     NATIONAL_ID_PEPPER: z.string().min(32, 'NATIONAL_ID_PEPPER باید حداقل ۳۲ کاراکتر باشد'),
-    DATA_ENCRYPTION_KEY: z.string().regex(HEX_64, 'DATA_ENCRYPTION_KEY باید ۶۴ کاراکتر hex (۳۲ بایت) باشد'),
+    DATA_ENCRYPTION_KEY: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined))
+      .refine((v) => v === undefined || HEX_64.test(v), 'DATA_ENCRYPTION_KEY در صورت تنظیم باید ۶۴ کاراکتر hex (۳۲ بایت) باشد'),
     SETUP_CODE: z.string().min(16).optional(),
 
     SESSION_COOKIE_NAME: z.string().min(3).default('__Host-sid'),

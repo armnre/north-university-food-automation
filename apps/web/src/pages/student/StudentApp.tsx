@@ -15,7 +15,7 @@ const items: NavItem[] = [
   { to: '/', label: 'خانه', icon: <Home />, mobile: true },
   { to: '/menu', label: 'منوی غذا', icon: <CalendarDays />, mobile: true },
   { to: '/reservations', label: 'رزروها', icon: <ReceiptText />, mobile: true },
-  { to: '/wallet', label: 'کیف پول', icon: <Wallet />, mobile: true },
+  { to: '/wallet', label: 'اعتبار', icon: <Wallet />, mobile: true },
   { to: '/profile', label: 'پروفایل', icon: <UserRound />, mobile: true },
   { to: '/notifications', label: 'اعلان‌ها', icon: <Bell /> },
   { to: '/help', label: 'راهنما و پشتیبانی', icon: <HelpCircle /> },

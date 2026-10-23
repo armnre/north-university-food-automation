@@ -13,14 +13,9 @@ import {
   okResponseSchema,
   reissueQrResponseSchema,
   tehranToday,
-  topupRequestSchema,
-  topupResponseSchema,
   walletResponseSchema,
-  withdrawalCreateRequestSchema,
-  withdrawalDtoSchema,
 } from '@food/shared';
 import { mealSlotLabel } from '@food/shared';
-import { AppError } from '../lib/errors.js';
 import type { CustomerAuth, ServiceDeps } from '../types.js';
 import { queryOfferings } from '../repositories/offering.repo.js';
 import { queryReservations } from '../repositories/reservation.repo.js';
@@ -33,11 +28,10 @@ import {
   reserveMeal,
 } from '../services/reservation.service.js';
 import { getSettings } from '../services/settings.service.js';
-import { createTopup } from '../services/payment.service.js';
-import { createWithdrawal, listWithdrawals, myWallet } from '../services/finance.service.js';
+import { myWallet } from '../services/finance.service.js';
 import { listNotificationsForAccount, markNotificationsRead, unreadCountFor } from '../services/notification.service.js';
 
-/** امور دانشجو/کارمند: منو، رزرو، سبد خرید، لغو، QR، کیف پول، برداشت و اعلان‌ها. */
+/** امور دانشجو/کارمند: منو، رزرو، سبد خرید، QR، اعتبار داخلی کیف پول و اعلان‌ها. */
 export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
   return async (app) => {
     app.addHook('preValidation', app.requireCustomer);
@@ -122,7 +116,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           today,
           offerings: result,
           policyNote: settings.reservationPolicyNote,
-          settings: { onlinePaymentEnabled: settings.onlinePaymentEnabled, withdrawalEnabled: settings.withdrawalEnabled },
+          settings: { onlinePaymentEnabled: settings.onlinePaymentEnabled },
         };
       },
     );
@@ -224,85 +218,8 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
 
     app.get(
       '/wallet',
-      { schema: { response: { 200: walletResponseSchema }, tags: ['me'], summary: 'کیف پول: موجودی و تاریخچه' } },
+      { schema: { response: { 200: walletResponseSchema }, tags: ['me'], summary: 'اعتبار داخلی کیف پول: موجودی و تاریخچهٔ تراکنش‌ها' } },
       async (request) => myWallet(deps, request.auth as CustomerAuth),
-    );
-
-    app.post(
-      '/wallet/topup',
-      {
-        schema: {
-          body: topupRequestSchema,
-          response: { 200: topupResponseSchema },
-          tags: ['me'],
-          summary: 'شروع شارژ کیف پول از درگاه پرداخت',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 20), timeWindow: '10 minutes' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const result = await createTopup(deps, {
-          auth,
-          amountRial: request.body.amountRial,
-          returnTo: request.body.returnTo,
-          ip: request.clientIp,
-        });
-        if (!result.enabled) {
-          throw new AppError('PAYMENT_GATEWAY_DISABLED', result.message);
-        }
-        return { paymentId: result.paymentId, redirectUrl: result.redirectUrl, enabled: result.enabled, message: result.message };
-      },
-    );
-
-    app.post(
-      '/withdrawals',
-      {
-        schema: {
-          body: withdrawalCreateRequestSchema,
-          response: { 200: withdrawalDtoSchema },
-          tags: ['me'],
-          summary: 'ثبت درخواست برداشت وجه (مسدودی فوری مبلغ)',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 10), timeWindow: '1 hour' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const created = await createWithdrawal(deps, {
-          auth,
-          amountRial: request.body.amountRial,
-          iban: request.body.iban,
-          ip: request.clientIp,
-        });
-        return {
-          id: created.id,
-          amountRial: created.amountRial,
-          ibanMasked: created.ibanMasked,
-          status: created.status,
-          createdAt: new Date().toISOString(),
-          reviewedAt: null,
-          paidAt: null,
-          reason: null,
-          bankReference: null,
-          holderIdentifier: null,
-          holderName: null,
-        };
-      },
-    );
-
-    app.get(
-      '/withdrawals',
-      {
-        schema: {
-          response: { 200: z.object({ withdrawals: z.array(withdrawalDtoSchema) }) },
-          tags: ['me'],
-          summary: 'درخواست‌های برداشت کاربر جاری',
-        },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const rows = await listWithdrawals(deps, { accountId: auth.accountId, limit: 100 });
-        return { withdrawals: rows };
-      },
     );
 
     app.get(

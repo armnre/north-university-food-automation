@@ -76,9 +76,6 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           if (!price) continue;
 
           const myReservation = mine.rows.find((r) => r.offeringId === offering.id && isLiveStatus(r.status));
-          const slotTaken = mine.rows.some(
-            (r) => r.serviceDate === offering.serviceDate && r.mealSlot === offering.mealSlot && isLiveStatus(r.status),
-          );
           const open =
             offering.status === 'Published' &&
             offering.reserveOpensAt.getTime() <= now &&
@@ -119,7 +116,6 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             open,
             myReservationId: myReservation?.id ?? null,
             myStatus: myReservation?.status ?? null,
-            slotTaken,
           });
         }
 

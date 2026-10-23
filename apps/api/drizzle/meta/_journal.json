@@ -15,6 +15,13 @@
       "when": 1792705662126,
       "tag": "0001_triggers_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792705680000,
+      "tag": "0002_offering_level_unique",
+      "breakpoints": true
     }
   ]
 }

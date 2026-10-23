@@ -153,29 +153,38 @@ describe('رزرو', () => {
     await assertLedgerInvariants();
   });
 
-  it('دو رزرو برای یک وعده در یک روز ⇒ «قبلاً رزرو کرده‌اید» (ایندکس یکتای جزئی)', async () => {
+  it('دو غذای مختلف در ناهار یک روز با یک حساب ⇒ هر دو موفق؛ رزرو دوبارهٔ همان غذا ⇒ خطای DUPLICATE_OFFERING', async () => {
     const student = await createStudent(db, { balanceRial: 1_000_000 });
-    const offering = await openOffering({ capacity: 10, price: 100_000 });
-    const client = await loginStudentClient(student);
-
-    expect((await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) })).status).toBe(200);
-
-    // وعدهٔ دیگر در همان روز و همان وعدهٔ غذایی
+    const first = await openOffering({ capacity: 10, price: 100_000 });
     const second = await createOffering(db, {
       serviceDate: tomorrow(),
       mealSlot: 'Lunch',
       capacity: 10,
       foodId: await createFood(db, 'غذای دوم'),
-      prices: { Student: 100_000 },
+      prices: { Student: 150_000 },
       reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
     });
-    const response = await client.post('/api/v1/me/reservations', { offeringId: second.id, idempotencyKey: randomHex(8) });
-    expect(response.status).toBe(409);
-    expect((response.body as { error: { code: string; message: string } }).error.code).toBe('DUPLICATE_SLOT');
-    expect((response.body as { error: { message: string } }).error.message).toContain('قبلاً رزرو کرده‌اید');
+    const client = await loginStudentClient(student);
 
-    const [row] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [second.id]);
-    expect(row?.reserved_count).toBe(0);
+    const res1 = await client.post('/api/v1/me/reservations', { offeringId: first.id, idempotencyKey: randomHex(8) });
+    expect(res1.status).toBe(200);
+
+    // غذای دوم در همان روز و همان وعدهٔ ناهار ⇒ موفق
+    const res2 = await client.post('/api/v1/me/reservations', { offeringId: second.id, idempotencyKey: randomHex(8) });
+    expect(res2.status).toBe(200);
+    expect((res2.body as { code: string }).code).not.toBe((res1.body as { code: string }).code);
+    expect((res2.body as { balanceRial: number }).balanceRial).toBe(750_000);
+
+    // رزرو دوبارهٔ همان غذای اول ⇒ ۴۰۹ DUPLICATE_OFFERING
+    const dup = await client.post('/api/v1/me/reservations', { offeringId: first.id, idempotencyKey: randomHex(8) });
+    expect(dup.status).toBe(409);
+    expect((dup.body as { error: { code: string; message: string } }).error.code).toBe('DUPLICATE_OFFERING');
+    expect((dup.body as { error: { message: string } }).error.message).toContain('این غذا را قبلاً رزرو کرده‌اید');
+
+    const [row1] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [first.id]);
+    const [row2] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [second.id]);
+    expect(row1?.reserved_count).toBe(1);
+    expect(row2?.reserved_count).toBe(1);
     await assertLedgerInvariants();
   });
 

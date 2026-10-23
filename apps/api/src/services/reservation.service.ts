@@ -122,6 +122,18 @@ export async function reserveMeal(deps: ServiceDeps, input: ReserveInput): Promi
     const price = await priceForGroup(tx, offeringId, holder.customerGroup);
     if (price == null) fail('FORBIDDEN', 'این غذا برای شما در دسترس نیست.');
 
+    // ۳.۵) جلوگیری از رزرو تکراری همان آیتم منو (چند غذای مختلف در یک وعده مجاز است)
+    const alreadyReserved = await tx
+      .select({ id: reservations.id })
+      .from(reservations)
+      .where(
+        sql`${reservations.accountId} = ${auth.accountId} AND ${reservations.offeringId} = ${offeringId} AND ${reservations.status} IN ('Reserved','Delivered')`,
+      )
+      .limit(1);
+    if (alreadyReserved[0]) {
+      fail('DUPLICATE_OFFERING', 'این غذا را قبلاً رزرو کرده‌اید.');
+    }
+
     // ۴) افزایش اتمیک ظرفیت (نتیجهٔ خالی ⇒ ظرفیت تکمیل)
     const capacityUpdated = await tx
       .update(mealOfferings)
@@ -189,24 +201,8 @@ export async function reserveMeal(deps: ServiceDeps, input: ReserveInput): Promi
       code = created!.code;
     } catch (error) {
       const message = dbErrorText(error);
-      if (/reservations_one_live_per_slot/.test(message) || pgErrorCode(error) === '23505') {
-        fail('DUPLICATE_SLOT', 'برای این وعده قبلاً رزرو کرده‌اید.');
-      }
-      if (/reservations_idempotency_key/.test(message)) {
-        const existing = await tx
-          .select({ id: reservations.id, code: reservations.code, priceAtBooking: reservations.priceAtBooking })
-          .from(reservations)
-          .where(eq(reservations.idempotencyKey, idemKey))
-          .limit(1);
-        if (existing[0]) {
-          return {
-            reservationId: existing[0].id,
-            code: existing[0].code,
-            priceRial: Number(existing[0].priceAtBooking),
-            balanceRial: holder.balanceRial,
-            replay: true,
-          };
-        }
+      if (/reservations_one_live_per_offering/.test(message) || pgErrorCode(error) === '23505') {
+        fail('DUPLICATE_OFFERING', 'این غذا را قبلاً رزرو کرده‌اید.');
       }
       throw error;
     }

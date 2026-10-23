@@ -9,7 +9,7 @@ export type WalletTx = { id: string; trackingCode: string; type: string; amountR
 export type Wallet = { balanceRial: number; transactions: WalletTx[] };
 export type MenuOffering = {
   id: string; serviceDate: string; mealSlot: string; mealSlotTitle: string; myPriceRial: number | null; status: string; foodName: string; foodDescription: string; cafeteriaName: string; priceRial: number; capacity: number;
-  remaining: number; notes: string; reserveDeadline: string | null; cancelDeadline: string | null; open: boolean; myReservationId: string | null; myStatus: string | null; slotTaken: boolean;
+  remaining: number; notes: string; reserveDeadline: string | null; cancelDeadline: string | null; open: boolean; myReservationId: string | null; myStatus: string | null; imagePath?: string | null;
 };
 export type StudentNotifs = { notifications: { id: string; title: string; body: string; createdAt: string; personal: boolean }[]; supportText: string; helpText: string };
 

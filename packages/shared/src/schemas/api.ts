@@ -336,7 +336,6 @@ export const meMenuResponseSchema = z.object({
       open: z.boolean(),
       myReservationId: z.string().nullable(),
       myStatus: z.string().nullable(),
-      slotTaken: z.boolean(),
       cancelDeadline: z.string().nullable(),
     }),
   ),

@@ -131,30 +131,33 @@ describe('قیدهای یکتایی و ایندکس‌ها', () => {
     expect(dupHash).toMatch(/students_national_id_hash_key|unique|duplicate/i);
   });
 
-  it('یک رزرو فعال برای هر (حساب، روز سرویس، وعده) — ایندکس یکتای جزئی', async () => {
+  it('چند غذای مختلف در یک وعده مجاز است؛ رزرو تکراری همان غذا (offering_id) ممنوع است — ایندکس یکتای جزئی', async () => {
     const student = await createStudent(db, { balanceRial: 1_000_000 });
     const lunch = await createOffering(db, { mealSlot: 'Lunch' });
     const dinner = await createOffering(db, { mealSlot: 'Dinner', serviceDate: lunch.serviceDate });
 
     await createReservationFixture(db, { accountId: student.accountId, offeringId: lunch.id });
 
-    // وعدهٔ دیگر در همان روز و همان وعدهٔ غذایی ⇒ نقض یکتایی
-    const dupSameSlot = await createOffering(db, {
+    // غذای دوم در همان روز و همان وعدهٔ غذایی ⇒ مجاز
+    const secondFoodSameSlot = await createOffering(db, {
       mealSlot: 'Lunch',
       serviceDate: lunch.serviceDate,
       foodId: await createFood(db, 'غذای دوم'),
     });
+    await expect(createReservationFixture(db, { accountId: student.accountId, offeringId: secondFoodSameSlot.id })).resolves.toBeTruthy();
+
+    // همان غذا (همان offering_id) برای بار دوم ⇒ نقض یکتایی
     const err = await expectSqlError(
       `INSERT INTO reservations (code, account_id, offering_id, price_at_booking, customer_group_at_booking, status, idempotency_key, qr_token, qr_issued_at)
        VALUES ($1,$2,$3,0,'Student','Reserved',$4,$5, now())`,
-      [`R-${randomHex(4).toUpperCase()}`, student.accountId, dupSameSlot.id, randomHex(10), randomHex(24)],
+      [`R-${randomHex(4).toUpperCase()}`, student.accountId, lunch.id, randomHex(10), randomHex(24)],
     );
-    expect(err).toMatch(/reservations_one_live_per_slot|unique|duplicate/i);
+    expect(err).toMatch(/reservations_one_live_per_offering|unique|duplicate/i);
 
     // وعدهٔ متفاوت در همان روز ⇒ مجاز
     await expect(createReservationFixture(db, { accountId: student.accountId, offeringId: dinner.id })).resolves.toBeTruthy();
 
-    // پس از لغو، رزرو مجدد در همان وعده مجاز است
+    // پس از لغو، رزرو مجدد همان غذا مجاز است
     await db
       .update(reservations)
       .set({ status: 'Cancelled', cancelReason: 'لغو تست' })

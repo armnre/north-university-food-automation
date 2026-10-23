@@ -12,6 +12,7 @@ import { deleteStaleCaptchas } from './captcha.service.js';
 import { cleanupImportRows } from './import.service.js';
 import { reconcileLedger } from './ledger.service.js';
 import { alertFinanceAndAdmins } from './notification.service.js';
+import { sendMealReminders } from './reminder.service.js';
 
 /**
  * موتور زمان‌بندی و اجرای ایمن jobهای پس‌زمینه (`food-worker`).
@@ -29,6 +30,7 @@ const LOCK_NAMESPACE = 20261023;
 
 export type WorkerJobName =
   | 'mark-no-shows'
+  | 'send-meal-reminders'
   | 'reconcile-payments'
   | 'cleanup-captchas'
   | 'cleanup-sessions'
@@ -123,6 +125,18 @@ export const WORKER_JOBS: readonly JobSpec[] = [
     async run(deps) {
       const marked = await markNoShows(deps);
       return { message: `${marked} رزرو به وضعیت عدم مراجعه تغییر یافت`, details: { marked } };
+    },
+  },
+  {
+    name: 'send-meal-reminders',
+    lockId: 109,
+    intervalMs: 10 * 60_000,
+    async run(deps) {
+      const res = await sendMealReminders(deps);
+      return {
+        message: `یادآوری وعده بررسی شد (ارسال درون‌برنامه‌ای: ${res.sent}، صف پیامک: ${res.smsQueued})`,
+        details: res,
+      };
     },
   },
   {
@@ -365,7 +379,14 @@ export function startWorkerScheduler(pool: pg.Pool, deps: ServiceDeps, workerId 
   };
 
   // اجرای اولیهٔ jobهای کلیدی پس از بالا آمدن worker
-  for (const job of ['mark-no-shows', 'reconcile-payments', 'cleanup-captchas', 'cleanup-sessions', 'reconcile-ledger'] as const) {
+  for (const job of [
+    'mark-no-shows',
+    'send-meal-reminders',
+    'reconcile-payments',
+    'cleanup-captchas',
+    'cleanup-sessions',
+    'reconcile-ledger',
+  ] as const) {
     trigger(job);
   }
 

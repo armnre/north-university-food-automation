@@ -75,6 +75,12 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 - همگام‌سازی دسته‌ای (حداکثر ۵۰ رویداد در هر درخواست) با backoff نمایی، دکمهٔ «همگام‌سازی اکنون» و اجرای خودکار روی `online` و `visibilitychange`؛ ارتقای کامل `DeliveryPage.tsx` (نشانگر وضعیت و شمارش صف، نوار هشدار «پذیرش آفلاین موقت است»، لیست صف و کارت هشدار تعارض) و افزودن `OfflineConflictsPanel.tsx` به صفحات مدیریتی رزروها و گزارش‌ها.
 - راستی‌آزمایی precache شدن چانک `DeliveryPage` در `sw.js` بدون کش شدن `/api`، افزودن ۴ تست واحد `fake-indexeddb` (`apps/web/test/offline-delivery.test.ts`) و تست‌های یکپارچهٔ سرور شامل اسکن هم‌زمان یک بلیت در دو دستگاه آفلاین (`OfflineConflict`).
 
+### تکمیل نهایی — گام ۳ (یادآوری خودکار وعدهٔ غذایی `send-meal-reminders` در کارگر پس‌زمینه)
+
+- افزودن مهاجرت `0004_reservation_reminders.sql` (به‌همراه ثبت در `_journal.json` و اعطای فقط `SELECT, INSERT` به نقش اجرایی `food_app`) و جدول یکتای `reservation_reminders` برای تضمین idempotency کامل.
+- پیاده‌سازی سرویس `apps/api/src/services/reminder.service.ts` و ثبت کار `send-meal-reminders` (هر ۱۰ دقیقه، قفل مشورتی `109` و ثبت در `job_runs`) در `worker-jobs.ts`: محاسبهٔ زمان شروع وعده به وقت تهران (`Asia/Tehran`)، فیلتر صرفاً رزروهای `Reserved` در بازهٔ `reminder_hours_before_meal`، ثبت اعلان درون‌برنامه‌ای و صف پیامک در `notification_outbox` در صورت وجود موبایل (و فقط اعلان درون‌برنامه‌ای در صورت نبود موبایل).
+- ارتقای `SettingsPage.tsx` برای ویرایش و اعتبارسنجی عددی `reminder_hours_before_meal` و سایر پارامترهای زمانی به همراه جدول وضعیت آخرین اجرای کارهای `food-worker`؛ افزودن تست‌های یکپارچهٔ کامل در `worker.test.ts` و `schema.test.ts`.
+
 ---
 
 ## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط

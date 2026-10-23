@@ -19,7 +19,7 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     pool: 'threads',
-    poolOptions: { threads: { singleThread: true } },
+    maxWorkers: 1,
     fileParallelism: false,
     sequence: { concurrent: false },
     testTimeout: 120_000,

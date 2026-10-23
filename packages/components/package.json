@@ -4,6 +4,9 @@
   "private": true,
   "description": "کامپوننت‌های UI مشترک فرانت‌اند (فقط موارد واقعاً استفاده‌شده)",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "sideEffects": false,
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

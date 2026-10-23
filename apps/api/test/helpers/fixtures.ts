@@ -378,16 +378,17 @@ export async function createDeliverableOffering(
   options: { capacity?: number; price?: number; groups?: Record<string, number> } = {},
 ): Promise<OfferingFixtureForDelivery> {
   const nowTehran = tehranParts();
-  // شروع وعده ۳۰ دقیقه بعد از اکنون (تا رزرو مجاز بماند) و پایان ۱۵۰ دقیقه بعد؛
-  // با scan_window_before=60 بازهٔ اسکن از همین لحظه باز است.
-  const start = shiftDayIfNeeded(nowTehran.hour * 60 + nowTehran.minute + 30);
-  const end = shiftDayIfNeeded(nowTehran.hour * 60 + nowTehran.minute + 150);
-  // اگر پایان از نیمه‌شب تهران بگذرد، آن را در همان روز نگه می‌داریم
-  const endTime = end.dayOffset !== start.dayOffset ? '23:59:00' : end.time;
+  const nowMinutes = nowTehran.hour * 60 + nowTehran.minute;
+  // نگه داشتن وعده در همان روز تقویمی تهران (تا تحویل با wrongDay مواجه نشود)
+  // و در عین حال آینده نگه داشتن start_time نسبت به اکنون (تا رزرو مجاز بماند).
+  const startMinutes = nowMinutes <= 23 * 60 + 58 ? Math.min(nowMinutes + 30, 23 * 60 + 58) : 23 * 60 + 59;
+  const endMinutes = Math.min(Math.max(startMinutes + 1, nowMinutes + 150), 23 * 60 + 59);
+  const start = shiftDayIfNeeded(startMinutes);
+  const endTime = shiftDayIfNeeded(endMinutes).time;
 
   await db.execute(sql`UPDATE meal_slots SET start_time = ${start.time}::time, end_time = ${endTime}::time WHERE code = 'Lunch'`);
 
-  const serviceDate = addDays(tehranToday(), start.dayOffset);
+  const serviceDate = tehranToday();
   const offering = await createOffering(db, {
     serviceDate,
     mealSlot: 'Lunch',

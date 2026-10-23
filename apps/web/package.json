@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "description": "فرانت‌اند سامانه اتوماسیون تغذیه دانشگاه شمال (React + Vite + Tailwind)",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",

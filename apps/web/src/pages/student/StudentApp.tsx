@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Bell, CalendarDays, HelpCircle, Home, ReceiptText, UserRound, Wallet } from 'lucide-react';
 import { studentNotifications } from '../../lib/api';
 import Shell, { type NavItem } from '../../components/Shell';
+import { LoadingBlock } from '../../components/ui-kit';
 import type { StudentMe } from '../../lib/session';
-import StudentDashboard from './StudentDashboard';
-import MenuPage from './MenuPage';
-import MyReservations from './MyReservations';
-import WalletPage from './WalletPage';
-import PaymentResultPage from './PaymentResultPage';
-import NotificationsPage from './NotificationsPage';
-import ProfilePage from './ProfilePage';
+
+const StudentDashboard = lazy(() => import('./StudentDashboard'));
+const MenuPage = lazy(() => import('./MenuPage'));
+const MyReservations = lazy(() => import('./MyReservations'));
+const WalletPage = lazy(() => import('./WalletPage'));
+const PaymentResultPage = lazy(() => import('./PaymentResultPage'));
+const NotificationsPage = lazy(() => import('./NotificationsPage'));
+const ProfilePage = lazy(() => import('./ProfilePage'));
 
 const items: NavItem[] = [
   { to: '/', label: 'خانه', icon: <Home />, mobile: true },
@@ -23,39 +25,59 @@ const items: NavItem[] = [
 ];
 
 function NotificationBell() {
-  
   const loc = useLocation();
   const [unread, setUnread] = useState(0);
   useEffect(() => {
     const seen = localStorage.getItem('notif-seen') ?? '';
-    if (loc.pathname === '/notifications') { localStorage.setItem('notif-seen', new Date().toISOString()); setUnread(0); return; }
-    studentNotifications().then((raw) => {
-      const r = raw as unknown as { notifications: { createdAt: string }[] };
-      setUnread(r.notifications.filter((n) => !seen || new Date(n.createdAt) > new Date(seen)).length);
-    }).catch(() => undefined);
+    if (loc.pathname === '/notifications') {
+      localStorage.setItem('notif-seen', new Date().toISOString());
+      setUnread(0);
+      return;
+    }
+    studentNotifications()
+      .then((raw) => {
+        const r = raw as unknown as { notifications: { createdAt: string }[] };
+        setUnread(r.notifications.filter((n) => !seen || new Date(n.createdAt) > new Date(seen)).length);
+      })
+      .catch(() => undefined);
   }, [loc.pathname]);
   return (
-    <Link to="/notifications" aria-label="اعلان‌ها" className="relative grid h-10 w-10 place-items-center rounded-xl border bg-card shadow-[var(--shadow-sm)] transition active:scale-95">
+    <Link
+      to="/notifications"
+      aria-label="اعلان‌ها"
+      className="relative grid h-11 w-11 place-items-center rounded-xl border bg-card shadow-[var(--shadow-sm)] transition active:scale-95"
+    >
       <Bell className={unread ? 'h-5 w-5 origin-top animate-[wiggle_1.2s_ease-in-out_2]' : 'h-5 w-5'} />
-      {unread > 0 && <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background">{unread > 9 ? '۹+' : unread.toLocaleString('fa-IR')}</span>}
+      {unread > 0 && (
+        <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+          {unread > 9 ? '۹+' : unread.toLocaleString('fa-IR')}
+        </span>
+      )}
     </Link>
   );
 }
 
 export default function StudentApp({ me }: { me: StudentMe }) {
   return (
-    <Shell items={items} userLabel={me.fullName || me.studentNumber} roleLabel={`دانشجو · ${me.studentNumber}`} headerActions={<NotificationBell />}>
-      <Routes>
-        <Route path="/" element={<StudentDashboard me={me} />} />
-        <Route path="/menu" element={<MenuPage />} />
-        <Route path="/reservations" element={<MyReservations />} />
-        <Route path="/wallet" element={<WalletPage />} />
-        <Route path="/payment/result" element={<PaymentResultPage />} />
-        <Route path="/notifications" element={<NotificationsPage mode="notifications" />} />
-        <Route path="/help" element={<NotificationsPage mode="help" />} />
-        <Route path="/profile" element={<ProfilePage me={me} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+    <Shell
+      items={items}
+      userLabel={me.fullName || me.studentNumber}
+      roleLabel={`دانشجو · ${me.studentNumber}`}
+      headerActions={<NotificationBell />}
+    >
+      <Suspense fallback={<LoadingBlock rows={4} />}>
+        <Routes>
+          <Route path="/" element={<StudentDashboard me={me} />} />
+          <Route path="/menu" element={<MenuPage />} />
+          <Route path="/reservations" element={<MyReservations />} />
+          <Route path="/wallet" element={<WalletPage />} />
+          <Route path="/payment/result" element={<PaymentResultPage />} />
+          <Route path="/notifications" element={<NotificationsPage mode="notifications" />} />
+          <Route path="/help" element={<NotificationsPage mode="help" />} />
+          <Route path="/profile" element={<ProfilePage me={me} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </Shell>
   );
 }

@@ -31,9 +31,9 @@ export default function KitchenDashboard() {
     <>
       <PageHeader title="داشبورد آشپزخانه" subtitle="وضعیت امروز، منوی هفت روز آینده و دسترسی سریع به مدیریت غذا و منو"
         actions={<div className="flex flex-wrap gap-2">
-          {perms.includes('menu') && <Button asChild><Link to="/offerings"><CalendarPlus className="ms-1 h-4 w-4" />چیدن منو</Link></Button>}
+          {perms.includes('offerings') && <Button asChild><Link to="/offerings"><CalendarPlus className="ms-1 h-4 w-4" />چیدن منو</Link></Button>}
           {perms.includes('foods') && <Button asChild variant="outline"><Link to="/foods"><BookOpen className="ms-1 h-4 w-4" />کتابخانه‌ی غذا</Link></Button>}
-          {perms.includes('contractor') && <Button asChild variant="outline"><Link to="/contractor"><BarChart3 className="ms-1 h-4 w-4" />گزارش</Link></Button>}
+          {perms.includes('contractorReports') && <Button asChild variant="outline"><Link to="/contractor"><BarChart3 className="ms-1 h-4 w-4" />گزارش</Link></Button>}
         </div>} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -47,7 +47,7 @@ export default function KitchenDashboard() {
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] p-3 text-sm">
           <AlertTriangle className="h-5 w-5 shrink-0 text-[hsl(var(--warning))]" />
           <span className="min-w-0 flex-1">برای {missing.map((d) => faWeekday(d)).join('، ')} هنوز منویی ثبت نشده است.</span>
-          {perms.includes('menu') && <Button size="sm" variant="outline" asChild><Link to="/offerings">ثبت منو</Link></Button>}
+          {perms.includes('offerings') && <Button size="sm" variant="outline" asChild><Link to="/offerings">ثبت منو</Link></Button>}
         </div>
       )}
 

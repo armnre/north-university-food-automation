@@ -4,6 +4,10 @@ import { ERROR_MESSAGES_FA } from '@food/shared';
 import { AppError, isAppError, toSafeError } from '../lib/errors.js';
 import type { ServiceDeps } from '../types.js';
 
+type FastifyReplyWithSendFile = {
+  sendFile?: (filename: string) => unknown;
+};
+
 /**
  * مدیریت یکسان خطاها.
  *
@@ -13,7 +17,11 @@ import type { ServiceDeps } from '../types.js';
  * ```
  * جزئیات فنی (stack، SQL، پیام درایورها) هرگز به کلاینت نمی‌رسد؛ فقط لاگ می‌شود.
  */
-export async function registerErrorHandler(app: FastifyInstance, deps: ServiceDeps): Promise<void> {
+export async function registerErrorHandler(
+  app: FastifyInstance,
+  deps: ServiceDeps,
+  options: { serveSpaFallback?: boolean } = {},
+): Promise<void> {
   app.setErrorHandler((error, request, reply) => {
     // خطای اعتبارسنجی Zod (fastify-type-provider-zod آن را به ZodError تبدیل می‌کند)
     if (error instanceof ZodError || (error as { name?: string }).name === 'ZodError') {
@@ -94,7 +102,19 @@ export async function registerErrorHandler(app: FastifyInstance, deps: ServiceDe
   });
 
   app.setNotFoundHandler((request, reply) => {
-    void reply.status(404).send({ error: { code: 'NOT_FOUND', message: ERROR_MESSAGES_FA.NOT_FOUND } });
+    if (
+      options.serveSpaFallback &&
+      (request.method === 'GET' || request.method === 'HEAD') &&
+      !request.url.startsWith('/api') &&
+      !request.url.startsWith('/uploads')
+    ) {
+      void reply.header('Cache-Control', 'no-cache');
+      const replyWithSendFile = reply as FastifyReplyWithSendFile;
+      if (typeof replyWithSendFile.sendFile === 'function') {
+        return replyWithSendFile.sendFile('index.html');
+      }
+    }
+    return reply.status(404).send({ error: { code: 'NOT_FOUND', message: ERROR_MESSAGES_FA.NOT_FOUND } });
   });
 
   // خطای غیرمنتظره در لایهٔ پایین‌تر (مثلاً در hookها)

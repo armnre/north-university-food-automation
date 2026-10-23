@@ -51,8 +51,6 @@ const tailwindConfig: Config = {
         },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
-          // Alias so `bg-sidebar-background` resolves like `bg-sidebar` — see
-          // ZITE_TAILWIND_THEME in packages/zite/src/apps.ts for the rationale.
           background: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',
           primary: 'hsl(var(--sidebar-primary))',

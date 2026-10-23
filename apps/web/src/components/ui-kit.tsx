@@ -5,9 +5,17 @@ import { Skeleton } from '@project/components/ui/skeleton';
 import { cn } from '@project/components/lib/utils';
 import type { Tone } from '../lib/format';
 
-/** App logo (generated). */
+/** لوگوی محلی سامانه (کاسهٔ تغذیه و طاق دانشگاه به رنگ سبز و طلایی). */
 export function Emblem({ className }: { className?: string }) {
-  return <img src="https://images.fillout.com/897142/thgnrgdvdc/generated-images/csmL29ZvYgCZwXYUTkJPuL/img_ikYUIdBmTklcxgXy.jpg" alt="لوگوی سامانه تغذیه" className={cn('h-9 w-9 rounded-[11px] object-cover shadow-sm', className)} />;
+  return (
+    <img
+      src="/logo.svg"
+      alt="لوگوی سامانه اتوماسیون تغذیه دانشگاه شمال"
+      width={36}
+      height={36}
+      className={cn('h-9 w-9 shrink-0 rounded-[11px] object-cover shadow-sm', className)}
+    />
+  );
 }
 
 const toneCls: Record<Tone, string> = {

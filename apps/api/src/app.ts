@@ -96,8 +96,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstan
     attachFieldsToBody: false,
   });
 
+  const webDist = env.SERVE_STATIC ? resolve(process.cwd(), env.WEB_DIST_PATH || '../web/dist') : null;
+  const serveSpaFallback = Boolean(webDist && existsSync(webDist));
+
   await registerSecurity(app, deps);
-  await registerErrorHandler(app, deps);
+  await registerErrorHandler(app, deps, { serveSpaFallback });
   await registerAuth(app, deps);
 
   // مستندات OpenAPI فقط در غیر production
@@ -137,14 +140,32 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstan
 
   // سرو کردن خروجی استاتیک فرانت‌اند در استقرار یکپارچه (SERVE_STATIC=true)
   if (env.SERVE_STATIC) {
-    const webDist = resolve(process.cwd(), env.WEB_DIST_PATH || '../web/dist');
-    if (existsSync(webDist)) {
-      await app.register(fastifyStatic, { root: webDist, wildcard: false, prefix: '/' });
-      app.setNotFoundHandler((request, reply) => {
-        if (request.url.startsWith('/api') || request.url.startsWith('/uploads')) {
-          return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'مورد درخواستی یافت نشد.' } });
-        }
-        return reply.sendFile('index.html');
+    if (webDist && serveSpaFallback) {
+      await app.register(fastifyStatic, {
+        root: webDist,
+        wildcard: false,
+        prefix: '/',
+        setHeaders: (res, filePath) => {
+          const target = res as unknown as {
+            setHeader?: (name: string, value: string) => void;
+            header?: (name: string, value: string) => void;
+          };
+          const applyHeader = (name: string, value: string) => {
+            if (typeof target.setHeader === 'function') target.setHeader(name, value);
+            else if (typeof target.header === 'function') target.header(name, value);
+          };
+          const normalized = filePath.replace(/\\/g, '/');
+          if (
+            normalized.endsWith('/sw.js') ||
+            normalized.endsWith('/manifest.webmanifest') ||
+            normalized.endsWith('/index.html') ||
+            normalized.endsWith('/offline.html')
+          ) {
+            applyHeader('Cache-Control', 'no-cache');
+          } else if (normalized.includes('/assets/')) {
+            applyHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
       });
     } else {
       logger.warn({ webDist }, 'SERVE_STATIC فعال است اما پوشهٔ build فرانت‌اند یافت نشد');

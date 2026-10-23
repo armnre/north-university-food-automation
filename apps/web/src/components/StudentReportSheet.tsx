@@ -53,11 +53,11 @@ export default function StudentReportSheet({ studentId, onClose }: { studentId: 
               <StatCard label="موجودی" value={rial(data.stats.balanceRial)} tone="primary" />
               <StatCard label="کل رزروها" value={faNum(data.stats.total)} />
               <StatCard label="تحویل‌شده" value={faNum(data.stats.delivered)} hint={`${faNum(data.stats.reserved)} در انتظار`} />
-              <StatCard label="لغو / عدم مراجعه" value={`${faNum(data.stats.cancelled)} / ${faNum(data.stats.expired)}`} />
+              <StatCard label="لغو / عدم مراجعه" value={`${faNum(data.stats.cancelled)} / ${faNum(data.stats.noShow ?? data.stats.expired)}`} />
               <StatCard label="جمع واریزها" value={rial(data.stats.creditsRial)} />
               <StatCard label="جمع برداشت‌ها" value={rial(data.stats.debitsRial)} />
               <StatCard label="هزینه غذا" value={rial(data.stats.spentRial)} />
-              <StatCard label="نرخ مراجعه" value={data.stats.delivered + data.stats.expired ? `${faNum(Math.round((data.stats.delivered / (data.stats.delivered + data.stats.expired)) * 100))}٪` : '—'} />
+              <StatCard label="نرخ مراجعه" value={data.stats.delivered + (data.stats.noShow ?? data.stats.expired) ? `${faNum(Math.round((data.stats.delivered / (data.stats.delivered + (data.stats.noShow ?? data.stats.expired))) * 100))}٪` : '—'} />
             </div>
             <Tabs defaultValue="res" className="mt-5">
               <TabsList><TabsTrigger value="res">رزروها ({faNum(data.reservations.length)})</TabsTrigger><TabsTrigger value="ledger">تراکنش‌ها ({faNum(data.ledger.length)})</TabsTrigger></TabsList>

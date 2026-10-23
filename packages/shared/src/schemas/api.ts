@@ -403,9 +403,7 @@ export const myReservationsResponseSchema = z.object({
       cafeteriaName: z.string(),
       deliveredAt: z.string().nullable(),
       cancelDeadline: z.string().nullable(),
-      canCancel: z.boolean(),
       qrToken: z.string().nullable(),
-      cancellationPolicyNote: z.string(),
     }),
   ),
 });

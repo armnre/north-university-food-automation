@@ -105,7 +105,7 @@ describe('اسکیمای پایگاه داده', () => {
     const slots = await query<{ code: string }>(db, `SELECT code FROM meal_slots ORDER BY sort_order`);
     expect(slots.map((s) => s.code)).toEqual(['Breakfast', 'Lunch', 'Dinner']);
     const settings = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM system_settings`);
-    expect(settings[0]?.n).toBe(14);
+    expect(settings[0]?.n).toBe(16);
     const caf = await query<{ name: string }>(db, `SELECT name FROM cafeterias`);
     expect(caf[0]?.name).toBe('سلف مرکزی');
     // اجرای دوم نباید دادهٔ تکراری بسازد

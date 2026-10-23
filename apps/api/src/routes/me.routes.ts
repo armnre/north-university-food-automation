@@ -1,7 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  cancelReservationResponseSchema,
   checkoutRequestSchema,
   checkoutResponseSchema,
   createReservationRequestSchema,
@@ -13,6 +12,7 @@ import {
   myReservationsResponseSchema,
   okResponseSchema,
   reissueQrResponseSchema,
+  tehranToday,
   topupRequestSchema,
   topupResponseSchema,
   walletResponseSchema,
@@ -25,7 +25,6 @@ import type { CustomerAuth, ServiceDeps } from '../types.js';
 import { queryOfferings } from '../repositories/offering.repo.js';
 import { queryReservations } from '../repositories/reservation.repo.js';
 import {
-  cancelOwnReservation,
   checkoutCart,
   computeCancelDeadline,
   isLiveStatus,
@@ -57,7 +56,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
       async (request) => {
         const auth = request.auth as CustomerAuth;
         const settings = await getSettings(deps);
-        const today = new Date().toISOString().slice(0, 10);
+        const today = tehranToday();
         const from = request.query.from < today ? today : request.query.from;
 
         const offerings = await queryOfferings(deps.db, { from, to: request.query.to, onlyBookable: true });
@@ -178,9 +177,8 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
         const auth = request.auth as CustomerAuth;
         const settings = await getSettings(deps);
         const rows = await listMyReservations(deps, auth);
-        const now = Date.now();
         return {
-          today: new Date().toISOString().slice(0, 10),
+          today: tehranToday(),
           reservations: rows.map((row) => {
             const deadline = computeCancelDeadline(
               { offeringCancelDeadline: row.offeringCancelDeadline, serviceDate: row.serviceDate, slotStartTime: row.slotStartTime },
@@ -199,29 +197,10 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
               cafeteriaName: row.cafeteriaName,
               deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString() : null,
               cancelDeadline: deadline.toISOString(),
-              canCancel: row.status === 'Reserved' && deadline.getTime() > now,
               qrToken: row.status === 'Reserved' ? row.qrToken : null,
-              cancellationPolicyNote: settings.cancellationPolicyNote,
             };
           }),
         };
-      },
-    );
-
-    app.post(
-      '/reservations/:id/cancel',
-      {
-        schema: {
-          params: idParams,
-          response: { 200: cancelReservationResponseSchema },
-          tags: ['me'],
-          summary: 'لغو رزرو در مهلت با بازگشت کامل وجه',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 20), timeWindow: '5 minutes' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        return cancelOwnReservation(deps, { auth, reservationId: (request.params as { id: string }).id, ip: request.clientIp });
       },
     );
 

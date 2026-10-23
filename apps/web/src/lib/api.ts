@@ -420,8 +420,6 @@ export const studentCheckout = (input: { offeringIds?: string[]; items?: { offer
     idempotencyKey: input.idempotencyKey,
   });
 export const studentReservations = () => api.get<Record<string, unknown>>('/me/reservations');
-export const cancelReservation = (id: string) =>
-  api.post<{ id: string; status: string; refundedRial: number; balanceRial: number }>(`/me/reservations/${id}/cancel`);
 export const reissueQr = (id: string) => api.post<{ id: string; qrToken: string; issuedAt: string }>(`/me/reservations/${id}/qr/reissue`);
 export const studentWallet = () => api.get<Record<string, unknown>>('/me/wallet');
 export const topupWallet = (input: { amountRial: number; returnTo?: string }) =>

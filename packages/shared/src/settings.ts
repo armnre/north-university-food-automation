@@ -8,8 +8,10 @@ import { z } from 'zod';
  */
 
 export const SETTING_KEYS = [
+  'student_cancellation_enabled',
   'cancel_cutoff_hours',
   'noshow_grace_minutes',
+  'noshow_refund',
   'scan_window_before_minutes',
   'scan_window_after_minutes',
   'min_topup_rial',
@@ -42,6 +44,13 @@ export type SettingMeta = {
 };
 
 export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
+  student_cancellation_enabled: {
+    key: 'student_cancellation_enabled',
+    kind: 'bool',
+    labelFa: 'امکان لغو رزرو توسط دانشجو',
+    descriptionFa: 'در نسخهٔ اول خاموش است (فقط لغو اداری فعال است). با روشن کردن و فعال‌سازی مسیر API، لغو توسط دانشجو فعال می‌شود.',
+    defaultValue: 'false',
+  },
   cancel_cutoff_hours: {
     key: 'cancel_cutoff_hours',
     kind: 'int',
@@ -56,11 +65,18 @@ export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
     key: 'noshow_grace_minutes',
     kind: 'int',
     labelFa: 'فرجهٔ عدم مراجعه (دقیقه بعد از پایان وعده)',
-    descriptionFa: 'پس از پایان وعده به‌اضافهٔ این فرجه، رزرو تحویل‌نشده به «عدم مراجعه» تغییر وضعیت می‌دهد (بدون بازگشت وجه).',
+    descriptionFa: 'پس از پایان وعده به‌اضافهٔ این فرجه، رزرو تحویل‌نشده به «عدم مراجعه» تغییر وضعیت می‌دهد.',
     min: 0,
     max: 720,
     unit: 'minutes',
     defaultValue: '30',
+  },
+  noshow_refund: {
+    key: 'noshow_refund',
+    kind: 'bool',
+    labelFa: 'بازگشت وجه در صورت عدم مراجعه',
+    descriptionFa: 'پیش‌فرض خاموش است (عدم مراجعه بازپرداختی ندارد). اگر روشن شود، مبلغ رزرو عدم مراجعه به اعتبار داخلی بازمی‌گردد.',
+    defaultValue: 'false',
   },
   scan_window_before_minutes: {
     key: 'scan_window_before_minutes',
@@ -201,8 +217,10 @@ export function validateSettingValue(key: SettingKey, raw: unknown): { ok: true;
 
 /** مقدارهای تایپ‌شدهٔ تنظیمات (پس از خواندن از دیتابیس). */
 export type ResolvedSettings = {
+  studentCancellationEnabled: boolean;
   cancelCutoffHours: number;
   noshowGraceMinutes: number;
+  noShowRefund: boolean;
   scanWindowBeforeMinutes: number;
   scanWindowAfterMinutes: number;
   minTopupRial: number;
@@ -235,8 +253,10 @@ export function resolveSettings(rows: Partial<Record<SettingKey, string | null |
     return v == null || v === '' ? DEFAULT_SETTINGS[k] : String(v);
   };
   return {
+    studentCancellationEnabled: toBool(get('student_cancellation_enabled'), DEFAULT_SETTINGS.student_cancellation_enabled),
     cancelCutoffHours: toInt(get('cancel_cutoff_hours'), DEFAULT_SETTINGS.cancel_cutoff_hours),
     noshowGraceMinutes: toInt(get('noshow_grace_minutes'), DEFAULT_SETTINGS.noshow_grace_minutes),
+    noShowRefund: toBool(get('noshow_refund'), DEFAULT_SETTINGS.noshow_refund),
     scanWindowBeforeMinutes: toInt(get('scan_window_before_minutes'), DEFAULT_SETTINGS.scan_window_before_minutes),
     scanWindowAfterMinutes: toInt(get('scan_window_after_minutes'), DEFAULT_SETTINGS.scan_window_after_minutes),
     minTopupRial: toInt(get('min_topup_rial'), DEFAULT_SETTINGS.min_topup_rial),

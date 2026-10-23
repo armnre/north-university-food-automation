@@ -351,94 +351,140 @@ describe('رزرو', () => {
 });
 
 describe('لغو و بازپرداخت', () => {
-  it('لغو در مهلت ⇒ بازگشت کامل وجه و کاهش reserved_count', async () => {
+  it('در نسخهٔ اول لغو توسط دانشجو غیرفعال است (مسیر HTTP حذف شده و سرویس با ۴۰۳ مسدود می‌کند)', async () => {
     const student = await createStudent(db, { balanceRial: 500_000 });
     const offering = await openOffering({ price: 100_000 });
     const client = await loginStudentClient(student);
     const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
     const reservationId = (created.body as { reservationId: string }).reservationId;
 
-    const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancel.status).toBe(200);
-    const body = cancel.body as { status: string; refundedRial: number; balanceRial: number };
-    expect(body.status).toBe('Cancelled');
-    expect(body.refundedRial).toBe(100_000);
-    expect(body.balanceRial).toBe(500_000);
+    // مسیر لغو دانشجو از API حذف شده است
+    const removedRoute = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
+    expect(removedRoute.status).toBe(404);
 
-    const [row] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [offering.id]);
-    expect(row?.reserved_count).toBe(0);
+    // تلاش دانشجو برای فراخوانی مسیر لغو اداری ⇒ ۴۰۳
+    const adminRouteAttempt = await client.post(`/api/v1/reservations/${reservationId}/cancel`, { reason: 'تلاش لغو توسط دانشجو' });
+    expect(adminRouteAttempt.status).toBe(403);
+
+    // فراخوانی مستقیم سرویس وقتی studentCancellationEnabled=false است ⇒ ۴۰۳ با پیام روشن
+    const { cancelOwnReservation } = await import('../../src/services/reservation.service.js');
+    const { AppError } = await import('../../src/lib/errors.js');
+    await expect(
+      cancelOwnReservation(
+        { db, env: ctx.env, log: ctx.log },
+        {
+          auth: {
+            kind: 'student',
+            sessionId: randomHex(8),
+            studentId: student.studentId,
+            accountId: student.accountId,
+            studentNumber: student.studentNumber,
+            fullName: 'دانشجو',
+            customerGroup: 'Student',
+          },
+          reservationId,
+          ip: '127.0.0.1',
+        },
+      ),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 403 && err.message.includes('فعال نیست'));
+
+    const [row] = await query<{ status: string }>(db, `SELECT status FROM reservations WHERE id = $1`, [reservationId]);
+    expect(row?.status).toBe('Reserved');
     await assertLedgerInvariants();
   });
 
-  it('لغو پس از مهلت رد می‌شود و پیام زمان دقیق شمسی دارد', async () => {
+  it('زیرساخت لغو دانشجو (وقتی student_cancellation_enabled=true شود): بازپرداخت، مهلت شمسی، IDOR و جلوگیری پس از تحویل', async () => {
+    const { cancelOwnReservation } = await import('../../src/services/reservation.service.js');
+    const { invalidateSettingsCacheForDb } = await import('../../src/services/settings.service.js');
+    const { AppError } = await import('../../src/lib/errors.js');
+
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value) VALUES ('student_cancellation_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+    );
+    invalidateSettingsCacheForDb(db);
+
     const student = await createStudent(db, { balanceRial: 500_000 });
-    // مهلت لغو: ۲ ساعت پیش
+    const other = await createStudent(db, { balanceRial: 500_000 });
+    const authOf = (s: typeof student) => ({
+      kind: 'student' as const,
+      sessionId: randomHex(8),
+      studentId: s.studentId,
+      accountId: s.accountId,
+      studentNumber: s.studentNumber,
+      fullName: 'دانشجو',
+      customerGroup: 'Student' as const,
+    });
+
+    // ۱) لغو در مهلت ⇒ بازگشت کامل وجه، ثبت cancelledAt/cancelledBy/cancelReason و کاهش reserved_count
     const offering = await createOffering(db, {
       serviceDate: tomorrow(),
       prices: { Student: 100_000 },
       reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      cancelDeadline: new Date(Date.now() + 4 * 3_600_000),
+    });
+    const client = await loginStudentClient(student);
+    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
+    const reservationId = (created.body as { reservationId: string }).reservationId;
+
+    const cancelled = await cancelOwnReservation(
+      { db, env: ctx.env, log: ctx.log },
+      { auth: authOf(student), reservationId, ip: '127.0.0.1' },
+    );
+    expect(cancelled.status).toBe('Cancelled');
+    expect(cancelled.refundedRial).toBe(100_000);
+    expect(cancelled.balanceRial).toBe(500_000);
+
+    const [resMeta] = await query<{ cancelled_by: string | null; cancel_reason: string | null; cancelled_at: Date | null }>(
+      db,
+      `SELECT cancelled_by, cancel_reason, cancelled_at FROM reservations WHERE id = $1`,
+      [reservationId],
+    );
+    expect(resMeta?.cancelled_by).toBe(student.studentId);
+    expect(resMeta?.cancel_reason).toBeTruthy();
+    expect(resMeta?.cancelled_at).toBeTruthy();
+
+    const [offRow] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [offering.id]);
+    expect(offRow?.reserved_count).toBe(0);
+
+    // ۲) لغو پس از مهلت ⇒ DEADLINE_PASSED با زمان دقیق شمسی
+    const expiredCancelOffering = await createOffering(db, {
+      serviceDate: tomorrow(),
+      foodId: await createFood(db, 'غذای مهلت‌گذشته'),
+      prices: { Student: 100_000 },
+      reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
       cancelDeadline: new Date(Date.now() - 2 * 3_600_000),
     });
-    const client = await loginStudentClient(student);
-    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    const reservationId = (created.body as { reservationId: string }).reservationId;
+    const created2 = await client.post('/api/v1/me/reservations', { offeringId: expiredCancelOffering.id, idempotencyKey: randomHex(8) });
+    const resId2 = (created2.body as { reservationId: string }).reservationId;
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(student), reservationId: resId2, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy(
+      (err: unknown) =>
+        err instanceof AppError &&
+        err.code === 'DEADLINE_PASSED' &&
+        err.message.includes('مهلت لغو') &&
+        Boolean((err.details as { deadlineFa?: string } | undefined)?.deadlineFa),
+    );
 
-    const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancel.status).toBe(409);
-    const error = (cancel.body as { error: { code: string; message: string; details?: { deadlineFa?: string } } }).error;
-    expect(error.code).toBe('DEADLINE_PASSED');
-    expect(error.message).toContain('مهلت لغو');
-    expect(error.details?.deadlineFa).toBeTruthy();
+    // ۳) IDOR و جلوگیری پس از تحویل
+    const delivOffering = await createDeliverableOffering(db, { capacity: 5, price: 100_000 });
+    const created3 = await client.post('/api/v1/me/reservations', { offeringId: delivOffering.id, idempotencyKey: randomHex(8) });
+    const resId3 = (created3.body as { reservationId: string }).reservationId;
 
-    const [row] = await query<{ status: string }>(db, `SELECT status FROM reservations WHERE id = $1`, [reservationId]);
-    expect(row?.status).toBe('Reserved');
-  });
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(other), reservationId: resId3, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 404);
 
-  it('مرز مهلت: دقیقاً قبل از مهلت مجاز و بعد از آن ممنوع (cancel_cutoff_hours)', async () => {
-    const student = await createStudent(db, { balanceRial: 500_000 });
-    // وعده‌ای که شروع آن ۲۰ ساعت دیگر است؛ cancel_cutoff_hours=12 ⇒ مهلت = ۸ ساعت دیگر
-    const serviceDate = tomorrow();
-    const startHour = String(new Date(Date.now() + 20 * 3_600_000).getUTCHours()).padStart(2, '0');
-    const offering = await createOffering(db, {
-      serviceDate,
-      prices: { Student: 100_000 },
-      reserveDeadline: tehranDateTimeToUtc(serviceDate, `${startHour}:00`),
-      cancelDeadline: null,
-    });
-    void startHour;
-    const client = await loginStudentClient(student);
-    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    if (created.status === 200) {
-      const reservationId = (created.body as { reservationId: string }).reservationId;
-      const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-      // اگر هنوز بیشتر از ۱۲ ساعت تا شروع وعده مانده باشد ⇒ لغو مجاز است
-      expect([200, 409]).toContain(cancel.status);
-    }
-    await assertLedgerInvariants();
-  });
-
-  it('لغو رزرو تحویل‌شده ممکن نیست و لغو رزرو دیگران (IDOR) رد می‌شود', async () => {
-    const first = await createStudent(db, { balanceRial: 500_000 });
-    const second = await createStudent(db, { balanceRial: 500_000 });
-    const offering = await createDeliverableOffering(db, { capacity: 5, price: 100_000 });
-
-    const clientA = await loginStudentClient(first);
-    const created = await clientA.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    const reservationId = (created.body as { reservationId: string }).reservationId;
-
-    const clientB = await loginStudentClient(second);
-    const idor = await clientB.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(idor.status).toBe(404); // وجود رزرو لو نمی‌رود
-
-    // تحویل توسط اپراتور
-    const operator = await createStaff(db, { role: 'Operator', cafeteriaId: offering.cafeteriaId });
-    const [qr] = await query<{ qr_token: string }>(db, `SELECT qr_token FROM reservations WHERE id = $1`, [reservationId]);
+    const operator = await createStaff(db, { role: 'Operator', cafeteriaId: delivOffering.cafeteriaId });
+    const [qr] = await query<{ qr_token: string }>(db, `SELECT qr_token FROM reservations WHERE id = $1`, [resId3]);
     const opClient = await loginStaff(ctx.app, operator.username, operator.password);
     const delivered = await opClient.post('/api/v1/delivery/confirm', { qrToken: qr!.qr_token });
     expect((delivered.body as { state: string }).state).toBe('delivered');
 
-    const cancelAfterDelivery = await clientA.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancelAfterDelivery.status).toBe(409);
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(student), reservationId: resId3, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 409);
+
     await assertLedgerInvariants();
   });
 

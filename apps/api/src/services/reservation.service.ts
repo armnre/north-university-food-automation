@@ -345,12 +345,19 @@ export async function checkoutCart(
 
 export type CancelResult = { id: string; status: 'Cancelled'; refundedRial: number; balanceRial: number };
 
-/** لغو رزرو توسط خود کاربر (با بازپرداخت کامل در همان تراکنش). */
+/**
+ * لغو رزرو توسط خود کاربر (با بازپرداخت کامل در همان تراکنش).
+ * در نسخهٔ اول پشت فلگ `studentCancellationEnabled = false` غیرفعال است (مسیر HTTP آن نیز حذف شده است)؛
+ * زیرساخت کامل آن برای فعال‌سازی احتمالی در آینده (رک. `docs/CANCELLATION.md`) نگهداری و تست شده است.
+ */
 export async function cancelOwnReservation(
   deps: ServiceDeps,
   input: { auth: CustomerAuth; reservationId: string; ip: string },
 ): Promise<CancelResult> {
   const settings = await getSettings(deps);
+  if (!settings.studentCancellationEnabled) {
+    fail('FORBIDDEN', 'امکان لغو رزرو توسط دانشجو در حال حاضر فعال نیست.');
+  }
   return cancelReservationInternal(deps, {
     reservationId: input.reservationId,
     accountIdScope: input.auth.accountId,
@@ -384,7 +391,7 @@ export async function adminCancelReservation(
   });
 }
 
-type CancelInternalInput = {
+export type CancelInternalInput = {
   reservationId: string;
   accountIdScope?: string;
   actor: Actor;
@@ -396,7 +403,7 @@ type CancelInternalInput = {
   details?: Record<string, unknown>;
 };
 
-async function cancelReservationInternal(deps: ServiceDeps, input: CancelInternalInput): Promise<CancelResult> {
+export async function cancelReservationInternal(deps: ServiceDeps, input: CancelInternalInput): Promise<CancelResult> {
   return deps.db.transaction(async (tx) => {
     const row = await lockReservationForUpdate(tx, input.reservationId);
     if (!row) fail('NOT_FOUND', 'رزرو یافت نشد.');
@@ -431,7 +438,12 @@ async function cancelReservationInternal(deps: ServiceDeps, input: CancelInterna
 
     await tx
       .update(reservations)
-      .set({ status: 'Cancelled', cancelledAt: new Date(), cancelReason: input.reason })
+      .set({
+        status: 'Cancelled',
+        cancelledAt: new Date(),
+        cancelledBy: input.actor.id || null,
+        cancelReason: input.reason,
+      })
       .where(sql`${reservations.id} = ${row.id} AND ${reservations.status} = 'Reserved'`);
 
     await tx

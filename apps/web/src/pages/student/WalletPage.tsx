@@ -31,7 +31,7 @@ export default function WalletPage() {
                 </div>
                 <div className="text-left">
                   <div className={cn('num font-bold', t.amountRial >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive')} dir="ltr">{t.amountRial >= 0 ? '+' : '−'}{rial(Math.abs(t.amountRial))}</div>
-                  <div className="num text-xs text-muted-foreground">مانده: {rial(t.runningBalance)}</div>
+                  <div className="num text-xs text-muted-foreground">مانده: {rial(t.balanceAfter)}</div>
                 </div>
               </li>
             ))}

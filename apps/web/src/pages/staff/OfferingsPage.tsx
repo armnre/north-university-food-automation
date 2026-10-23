@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown, CalendarPlus, Copy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown, CalendarPlus, Copy, Ban } from 'lucide-react';
 import { CopyMenuDialog, DayMenuBuilder } from '../../components/MenuTools';
 import { toast } from 'sonner';
-import { catalogList, offeringSave, offeringsList, reservationsAdminList } from '../../lib/api';
+import { catalogList, offeringSave, offeringStatus, offeringsList, reservationsAdminList } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';
@@ -16,29 +16,27 @@ import { MEALS, RES_STATUS, addDays, errMsg, faDate, faDigits, faNum, faShort, i
 import { useLoad } from '../../lib/useLoad';
 import type { AdminReservation, Catalog, Offering } from '../../lib/types';
 
-type Form = { id?: string; serviceDate: string; mealSlot: string; foodId: string; cafeteriaId: string; priceRial: string; capacity: string; reserveDeadline: string; cancelDeadline: string; active: boolean; notes: string; reason: string; orig?: Offering };
-const ALL = '__all__';
+type Form = { id?: string; serviceDate: string; mealSlot: string; foodId: string; priceRial: string; capacity: string; reserveDeadline: string; active: boolean; notes: string; reason: string; orig?: Offering };
 type SortKey = 'serviceDate' | 'foodName' | 'priceRial' | 'remaining';
 
-function defaultsFor(date: string, meal: string) {
-  const hour = meal === 'Breakfast' ? '07:00' : meal === 'Lunch' ? '12:00' : '19:00';
+function defaultsFor(date: string) {
   const prev = addDays(date, -1);
-  return { reserveDeadline: `${prev}T20:00`, cancelDeadline: `${prev}T22:00`, _hour: hour };
+  return { reserveDeadline: `${prev}T20:00` };
 }
 
 export default function OfferingsPage() {
   const [weekStart, setWeekStart] = useState(tehranToday());
-  const [caf, setCaf] = useState(ALL);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: 'serviceDate', dir: 1 });
   const to = addDays(weekStart, 6);
   const { data, error, loading, reload } = useLoad(async () => {
-    const [o, c] = await Promise.all([offeringsList({ from: weekStart, to, cafeteriaId: caf === ALL ? undefined : caf }), catalogList()]);
+    const [o, c] = await Promise.all([offeringsList({ from: weekStart, to }), catalogList()]);
     return { offerings: (o as { offerings: Offering[] }).offerings, catalog: c as Catalog };
-  }, [weekStart, caf]);
+  }, [weekStart]);
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<Offering | null>(null);
+  const [closeTarget, setCloseTarget] = useState<{ offering: Offering; status: 'SoldOut' | 'Cancelled' } | null>(null);
   const [builder, setBuilder] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [saveErr, setSaveErr] = useState('');
@@ -52,20 +50,20 @@ export default function OfferingsPage() {
   }, [data, q, sort]);
 
   const openNew = () => {
-    const d = defaultsFor(weekStart, 'Lunch');
-    setForm({ serviceDate: weekStart, mealSlot: 'Lunch', foodId: '', cafeteriaId: caf === ALL ? '' : caf, priceRial: '', capacity: '', reserveDeadline: d.reserveDeadline, cancelDeadline: d.cancelDeadline, active: true, notes: '', reason: '' });
+    const d = defaultsFor(weekStart);
+    setForm({ serviceDate: weekStart, mealSlot: 'Lunch', foodId: '', priceRial: '', capacity: '', reserveDeadline: d.reserveDeadline, active: true, notes: '', reason: '' });
   };
-  const openEdit = (o: Offering) => setForm({ id: o.id, serviceDate: o.serviceDate, mealSlot: o.mealSlot, foodId: o.foodId, cafeteriaId: o.cafeteriaId, priceRial: String(o.priceRial), capacity: String(o.capacity), reserveDeadline: isoToLocalInput(o.reserveDeadline), cancelDeadline: isoToLocalInput(o.cancelDeadline), active: o.active, notes: o.notes, reason: '', orig: o });
+  const openEdit = (o: Offering) => setForm({ id: o.id, serviceDate: o.serviceDate, mealSlot: o.mealSlot, foodId: o.foodId, priceRial: String(o.priceRial), capacity: String(o.capacity), reserveDeadline: isoToLocalInput(o.reserveDeadline), active: o.active, notes: o.notes, reason: '', orig: o });
 
   const formErr = form && (!form.foodId ? 'غذا را انتخاب کنید' : !/^\d+$/.test(form.priceRial) ? 'قیمت باید عدد صحیح (ریال) باشد'
     : !/^\d+$/.test(form.capacity) || Number(form.capacity) < 1 ? 'ظرفیت باید حداقل ۱ باشد' : form.orig && Number(form.capacity) < form.orig.reserved ? `ظرفیت کمتر از رزروهای فعلی (${faNum(form.orig.reserved)}) مجاز نیست`
-    : !form.reserveDeadline ? 'مهلت‌ها را تعیین کنید' : '');
+    : !form.reserveDeadline ? 'مهلت رزرو را تعیین کنید' : '');
 
   const save = async () => {
     if (!form || formErr) return;
     setBusy(true); setSaveErr('');
     try {
-      await offeringSave({ id: form.id, serviceDate: form.serviceDate, mealSlot: form.mealSlot as 'Lunch', foodId: form.foodId, cafeteriaId: form.cafeteriaId || undefined, priceRial: Number(form.priceRial), capacity: Number(form.capacity), reserveDeadline: tehranLocalToIso(form.reserveDeadline),  active: form.active, notes: form.notes, reason: form.reason || undefined });
+      await offeringSave({ id: form.id, serviceDate: form.serviceDate, mealSlot: form.mealSlot as 'Lunch', foodId: form.foodId, priceRial: Number(form.priceRial), capacity: Number(form.capacity), reserveDeadline: tehranLocalToIso(form.reserveDeadline), active: form.active, notes: form.notes, reason: form.reason || undefined });
       toast.success('وعده ذخیره شد.'); setForm(null); reload();
     } catch (e) { setSaveErr(errMsg(e)); } finally { setBusy(false); }
   };
@@ -86,7 +84,6 @@ export default function OfferingsPage() {
           <Button size="sm" variant="ghost" onClick={() => setWeekStart(tehranToday())}>امروز</Button>
         </div>
         <div className="flex gap-2">
-        {(data?.catalog.cafeterias.length ?? 0) > 1 && <Select value={caf} onValueChange={setCaf}><SelectTrigger className="h-11 rounded-xl lg:w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی سلف‌ها</SelectItem>{data?.catalog.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>}
         <Input className="h-11 rounded-xl lg:max-w-xs" placeholder="جست‌وجو" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
@@ -137,7 +134,11 @@ export default function OfferingsPage() {
                     <TableCell className="hidden md:table-cell">{o.cafeteriaName}</TableCell><TableCell className="num whitespace-nowrap">{rial(o.priceRial)}</TableCell>
                     <TableCell className="num">{faNum(o.reserved)} / {faNum(o.capacity)}</TableCell><TableCell className="num hidden sm:table-cell">{faNum(o.delivered)}</TableCell>
                     <TableCell>{!o.active ? <Pill tone="muted">غیرفعال</Pill> : o.remaining === 0 ? <Pill tone="danger">تکمیل</Pill> : closed ? <Pill tone="warning">بسته</Pill> : <Pill tone="success">باز</Pill>}</TableCell>
-                    <TableCell className="whitespace-nowrap"><Button size="icon" variant="ghost" aria-label="رزروها" onClick={() => setView(o)}><Users className="h-4 w-4" /></Button><Button size="icon" variant="ghost" aria-label="ویرایش" onClick={() => openEdit(o)}><Pencil className="h-4 w-4" /></Button></TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Button size="icon" variant="ghost" aria-label="رزروها" onClick={() => setView(o)}><Users className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" aria-label="ویرایش" onClick={() => openEdit(o)}><Pencil className="h-4 w-4" /></Button>
+                      {o.status !== 'Cancelled' && <Button size="icon" variant="ghost" aria-label="لغو وعده یا تمام شد" onClick={() => setCloseTarget({ offering: o, status: 'Cancelled' })}><Ban className="h-4 w-4 text-destructive" /></Button>}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -167,9 +168,72 @@ export default function OfferingsPage() {
         </DialogContent>
       </Dialog>
       <OfferingReservations offering={view} onClose={() => setView(null)} />
+      <CloseOfferingDialog target={closeTarget} onClose={() => setCloseTarget(null)} onDone={reload} />
       {data && <DayMenuBuilder open={builder} onClose={() => setBuilder(false)} onDone={reload} catalog={data.catalog} initialDate={addDays(tehranToday(), 1)} />}
       <CopyMenuDialog open={copyOpen} onClose={() => setCopyOpen(false)} onDone={reload} weekStart={weekStart} />
     </>
+  );
+}
+
+function CloseOfferingDialog({ target, onClose, onDone }: { target: { offering: Offering; status: 'SoldOut' | 'Cancelled' } | null; onClose: () => void; onDone: () => void }) {
+  const [status, setStatus] = useState<'Cancelled' | 'SoldOut'>('Cancelled');
+  const [reason, setReason] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const offering = target?.offering ?? null;
+  const expected = status === 'Cancelled' ? 'لغو وعده' : 'تمام شد';
+  const needsTyped = (offering?.reserved ?? 0) > 0;
+  const valid = reason.trim().length >= 5 && (!needsTyped || confirmText.trim() === expected);
+
+  const submit = async () => {
+    if (!offering || !valid) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await offeringStatus(offering.id, { status, reason: reason.trim(), confirmText: needsTyped ? confirmText.trim() : undefined });
+      toast.success(`وضعیت وعده تغییر کرد؛ ${faNum(r.cancelledReservations)} رزرو لغو و بازپرداخت شد.`);
+      setReason(''); setConfirmText(''); onClose(); onDone();
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={!!offering} onOpenChange={(o) => !o && !busy && (setReason(''), setConfirmText(''), setErr(''), onClose())}>
+      <DialogContent dir="rtl">
+        <DialogHeader>
+          <DialogTitle>تغییر وضعیت وعده و بازپرداخت خودکار</DialogTitle>
+          <DialogDescription>{offering && `${offering.foodName} · ${MEALS[offering.mealSlot]} · ${faDate(offering.serviceDate)}`}</DialogDescription>
+        </DialogHeader>
+        {offering && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>وضعیت جدید</Label>
+              <Select value={status} onValueChange={(v) => { setStatus(v as 'Cancelled' | 'SoldOut'); setConfirmText(''); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cancelled">لغو وعده (بازپرداخت رزروهای فعال)</SelectItem>
+                  <SelectItem value="SoldOut">تمام شد (بازپرداخت رزروهای تحویل‌نشده)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>دلیل الزامی (حداقل ۵ کاراکتر)</Label>
+              <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="مثلاً خرابی تجهیزات آشپزخانه" />
+            </div>
+            {needsTyped && (
+              <div className="space-y-1.5">
+                <Label>این وعده {faNum(offering.reserved)} رزرو دارد؛ برای تأیید عبارت «{expected}» را تایپ کنید</Label>
+                <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={expected} />
+              </div>
+            )}
+            <ErrorNote message={err} onClose={() => setErr('')} />
+          </div>
+        )}
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>انصراف</Button>
+          <Button variant="destructive" onClick={submit} disabled={!valid || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ثبت و بازپرداخت</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -182,7 +246,7 @@ function OfferingReservations({ offering, onClose }: { offering: Offering | null
         {loading ? <LoadingBlock rows={3} /> : error ? <p className="text-sm text-destructive">{error}</p> : !data?.length ? <p className="py-6 text-center text-sm text-muted-foreground">رزروی ثبت نشده است.</p> : (
           <Table>
             <TableHeader><TableRow><TableHead className="text-right">شماره دانشجویی</TableHead><TableHead className="text-right">نام</TableHead><TableHead className="text-right">مبلغ</TableHead><TableHead className="text-right">وضعیت</TableHead></TableRow></TableHeader>
-            <TableBody>{data.map((r) => <TableRow key={r.id}><TableCell className="num">{faDigits(r.studentNumber)}</TableCell><TableCell>{r.studentName}</TableCell><TableCell className="num">{rial(r.priceAtBooking)}</TableCell><TableCell><Pill tone={RES_STATUS[r.status]?.tone ?? 'muted'}>{RES_STATUS[r.status]?.label ?? r.status}</Pill></TableCell></TableRow>)}</TableBody>
+            <TableBody>{data.map((r) => <TableRow key={r.id}><TableCell className="num">{faDigits(r.holderIdentifier)}</TableCell><TableCell>{r.holderName}</TableCell><TableCell className="num">{rial(r.priceRial)}</TableCell><TableCell><Pill tone={RES_STATUS[r.status]?.tone ?? 'muted'}>{RES_STATUS[r.status]?.label ?? r.status}</Pill></TableCell></TableRow>)}</TableBody>
           </Table>
         )}
       </DialogContent>

@@ -52,8 +52,9 @@ test.describe('سناریوی سرتاسری دانشجو و اپراتور سل
     await page.getByLabel('رمز عبور').fill('Operator#2026!');
     await page.getByRole('button', { name: 'ورود کارکنان' }).click();
 
-    await page.goto('/delivery');
-    await page.getByPlaceholder('کد تحویل ۸ رقمی یا محتوای QR').fill(manualCodeText);
+    const manualInput = page.getByPlaceholder('کد تحویل ۸ رقمی یا محتوای QR');
+    await expect(manualInput).toBeVisible();
+    await manualInput.fill(manualCodeText);
     await page.getByRole('button', { name: 'بررسی' }).click();
 
     await expect(page.getByText('رزرو معتبر و آماده‌ی تحویل')).toBeVisible();

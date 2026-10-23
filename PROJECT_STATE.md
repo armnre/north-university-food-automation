@@ -68,6 +68,13 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 - ارتقای `docs/SECURITY.md` با تحلیل صریح ریسک ورود بدون رمز دانشجو و ۵ کنترل جبرانی؛ افزودن `lastLoginAt` و `previousLogin` به `/api/v1/auth/me`، نمایش «آخرین ورود» و مدیریت/ابطال نشست‌های فعال در `ProfilePage.tsx` دانشجو، و افزودن تست یکپارچهٔ اعلان «ورود از دستگاه جدید» (`security.new_login`).
 - افزودن `packages/shared/src/rbac-doc.ts` و اسکریپت `npm run docs:rbac` (`scripts/generate-rbac-doc.ts`) برای تولید خودکار `docs/RBAC.md` از منبع واحد `permissions.ts` به همراه تست واحد عدم واگرایی مستندات (`time-and-rbac.test.ts`).
 
+### تکمیل نهایی — گام ۲ (اسکن آفلاین سلف در فرانت‌اند با IndexedDB و همگام‌سازی مقاوم)
+
+- حذف کد تحویل خام از خروجی `GET /api/v1/delivery/offline-manifest` و جایگزینی با زوج هش `qrTokenHash` و `codeHash` (`SHA-256`) با تابع مشترک `normalizeDeliveryToken` در `@food/shared`.
+- پیاده‌سازی موتور آفلاین مرورگر در `apps/web/src/lib/offline-delivery.ts` با `idb` و سه store استاندارد (`manifest`، `queue`، `meta`)، هش `crypto.subtle`، به‌روزرسانی خودکار مانیفست در ورود، هر ۵ دقیقه و هنگام بازگشت آنلاین، پذیرش موقت با انسداد اسکن دوم در همان دستگاه، و ثبت تمام اسکن‌های معتبر/نامعتبر با `clientEventId` (UUID v4).
+- همگام‌سازی دسته‌ای (حداکثر ۵۰ رویداد در هر درخواست) با backoff نمایی، دکمهٔ «همگام‌سازی اکنون» و اجرای خودکار روی `online` و `visibilitychange`؛ ارتقای کامل `DeliveryPage.tsx` (نشانگر وضعیت و شمارش صف، نوار هشدار «پذیرش آفلاین موقت است»، لیست صف و کارت هشدار تعارض) و افزودن `OfflineConflictsPanel.tsx` به صفحات مدیریتی رزروها و گزارش‌ها.
+- راستی‌آزمایی precache شدن چانک `DeliveryPage` در `sw.js` بدون کش شدن `/api`، افزودن ۴ تست واحد `fake-indexeddb` (`apps/web/test/offline-delivery.test.ts`) و تست‌های یکپارچهٔ سرور شامل اسکن هم‌زمان یک بلیت در دو دستگاه آفلاین (`OfflineConflict`).
+
 ---
 
 ## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط

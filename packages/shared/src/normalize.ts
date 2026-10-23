@@ -89,3 +89,22 @@ export function maskMiddle(value: string, visibleStart = 0, visibleEnd = 4): str
   if (s.length <= visibleStart + visibleEnd) return '•'.repeat(Math.max(s.length, 4));
   return `${s.slice(0, visibleStart)}${'•'.repeat(Math.max(4, s.length - visibleStart - visibleEnd))}${s.slice(s.length - visibleEnd)}`;
 }
+
+/**
+ * نرمال‌سازی توکن اسکن سلف (هم توکن ۴۸ کاراکتری هگز QR و هم کد ۸ تا ۱۲ کاراکتری با/بدون «R-»).
+ * خروجی متعارف برای محاسبهٔ یکسان `SHA-256` در سرور و کلاینت آفلاین استفاده می‌شود.
+ */
+export function normalizeDeliveryToken(raw: string): { kind: 'qr' | 'code'; canonical: string } | null {
+  const trimmed = toAsciiDigits(String(raw ?? '')).trim();
+  if (!trimmed) return null;
+  if (/^[a-f0-9]{48}$/i.test(trimmed)) {
+    return { kind: 'qr', canonical: trimmed.toLowerCase() };
+  }
+  const withoutExplicitPrefix = trimmed.toUpperCase().replace(/^R[\s\-_]+/, '');
+  const alnum = withoutExplicitPrefix.replace(/[^A-Z0-9]/g, '');
+  const canonical = alnum.replace(/^R(?=[A-Z0-9]{8,12}$)/, '');
+  if (/^[A-Z0-9]{8,12}$/.test(canonical)) {
+    return { kind: 'code', canonical };
+  }
+  return null;
+}

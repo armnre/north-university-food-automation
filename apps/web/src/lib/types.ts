@@ -34,8 +34,21 @@ export type AdminReservation = {
   id: string; code: string; status: string; priceRial: number; createdAt: string; offeringId: string; serviceDate: string; mealSlot: string; foodName: string;
   cafeteriaName: string; cafeteriaId: string; cancelDeadline: string | null; accountId: string; customerGroup: string; holderIdentifier: string; holderName: string; deliveredAt: string | null; canCancel: boolean;
 };
-export type ScanInfo = { reservationId: string; code: string; holderIdentifier: string; holderName: string; foodName: string; mealSlot: string; mealSlotTitle: string; cafeteriaName: string; serviceDate: string };
+export type ScanInfo = { reservationId: string; code: string; holderIdentifier: string; holderName: string; foodName: string; mealSlot: string; mealSlotTitle?: string; cafeteriaName: string; serviceDate: string };
 export type ScanResult = {
-  state: 'ready' | 'delivered' | 'already' | 'cancelled' | 'invalid' | 'wrongCafeteria' | 'wrongDay' | 'expired' | 'outsideWindow' | 'noShow' | 'offlineConflict' | 'network';
+  state:
+    | 'ready'
+    | 'delivered'
+    | 'offlineProvisional'
+    | 'already'
+    | 'cancelled'
+    | 'invalid'
+    | 'wrongCafeteria'
+    | 'wrongDay'
+    | 'expired'
+    | 'outsideWindow'
+    | 'noShow'
+    | 'offlineConflict'
+    | 'network';
   info: ScanInfo | null; message: string; deliveredAt: string | null; deliveredBy: string | null;
 };

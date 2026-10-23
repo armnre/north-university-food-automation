@@ -503,14 +503,67 @@ export const adminCancelReservation = (id: string, reason: string) =>
   api.post<{ id: string; status: string; refundedRial: number; balanceRial: number }>(`/reservations/${id}/cancel`, { reason });
 
 // --- تحویل ---------------------------------------------------------------
+export type OfflineManifestItemDto = {
+  reservationId: string;
+  qrTokenHash: string;
+  codeHash: string;
+  holderName: string;
+  holderIdentifier: string;
+  foodName: string;
+  mealSlot: string;
+  windowFrom: string;
+  windowTo: string;
+};
+export type OfflineManifestResponseDto = {
+  today: string;
+  cafeteriaId: string;
+  generatedAt: string;
+  reservations: OfflineManifestItemDto[];
+};
+export type OfflineSyncEventPayload = {
+  clientEventId: string;
+  reservationId: string | null;
+  qrTokenHash: string;
+  scannedAt: string;
+  deviceId: string;
+  localOutcome: 'ProvisionalAccepted' | 'DuplicateLocal' | 'InvalidOffline';
+};
+export type OfflineSyncResponseDto = {
+  accepted: number;
+  duplicate: number;
+  conflict: number;
+  invalid: number;
+  results: { clientEventId: string; outcome: string; message: string }[];
+};
+export type OfflineConflictDto = {
+  id: string;
+  receivedAt: string;
+  scannedAt: string;
+  message: string;
+  outcome: string;
+  deviceId?: string;
+  reservationId?: string | null;
+  reservationCode: string;
+  reservationStatus?: string;
+  serviceDate?: string;
+  mealSlot?: string;
+  foodName?: string;
+  holderName?: string;
+  holderIdentifier?: string;
+  cafeteriaName: string;
+  operatorName: string;
+};
+
 export const deliveryScan = (input: { qrToken: string } | string) =>
   api.post<Record<string, unknown>>('/delivery/scan', { qrToken: typeof input === 'string' ? input : input.qrToken });
 export const deliveryConfirm = (input: { qrToken: string; clientEventId?: string; deviceId?: string; scannedAt?: string } | string) =>
   api.post<Record<string, unknown>>('/delivery/confirm', typeof input === 'string' ? { qrToken: input } : input);
 export const deliveryStats = () => api.get<Record<string, unknown>>('/delivery/stats');
-export const offlineManifest = (cafeteriaId?: string) => api.get<Record<string, unknown>>('/delivery/offline-manifest', { cafeteriaId });
-export const offlineSync = (events: unknown[]) => api.post<Record<string, unknown>>('/delivery/sync', { events });
-export const offlineConflicts = () => api.get<{ conflicts: unknown[] }>('/delivery/offline-conflicts');
+export const offlineManifest = (cafeteriaId?: string) =>
+  api.get<OfflineManifestResponseDto>('/delivery/offline-manifest', { cafeteriaId });
+export const offlineSync = (events: OfflineSyncEventPayload[]) =>
+  api.post<OfflineSyncResponseDto>('/delivery/sync', { events });
+export const offlineConflicts = () => api.get<{ conflicts: OfflineConflictDto[] }>('/delivery/offline-conflicts');
 
 // --- مالی ----------------------------------------------------------------
 export const financeAdjust = (input: {

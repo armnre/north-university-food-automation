@@ -11,6 +11,7 @@ import { useLoad } from '../../lib/useLoad';
 import type { Catalog } from '../../lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@project/components/ui/tabs';
 import ManagementReports from '../../components/ManagementReports';
+import OfflineConflictsPanel from '../../components/OfflineConflictsPanel';
 
 type Row = {
   id: string;
@@ -84,6 +85,7 @@ export default function ReportsPage({ contractor }: { contractor?: boolean }) {
           </Button>
         }
       />
+      {!contractor && <OfflineConflictsPanel />}
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Input type="date" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="از تاریخ" />
         <Input type="date" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} aria-label="تا تاریخ" />

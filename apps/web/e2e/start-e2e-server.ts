@@ -3,21 +3,21 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
-import { tehranToday } from '@food/shared';
-import { buildApp } from '../../apps/api/src/app.js';
-import { readEnv, testEnv } from '../../apps/api/src/config/env.js';
-import { createDb, createPool } from '../../apps/api/src/db/client.js';
-import { runMigrations } from '../../apps/api/src/db/migrate.js';
-import { rawSql } from '../../apps/api/src/db/raw.js';
-import { createSilentLogger } from '../../apps/api/src/lib/logger.js';
+import { buildApp } from '../../api/src/app.js';
+import { readEnv, testEnv } from '../../api/src/config/env.js';
+import { createDb, createPool } from '../../api/src/db/client.js';
+import { runMigrations } from '../../api/src/db/migrate.js';
+import { rawSql } from '../../api/src/db/raw.js';
+import { createSilentLogger } from '../../api/src/lib/logger.js';
 import {
+  createDeliverableOffering,
   createFood,
   createOffering,
   createStaff,
   createStudent,
   resetBaseCache,
   seedBase,
-} from '../../apps/api/test/helpers/fixtures.js';
+} from '../../api/test/helpers/fixtures.js';
 
 async function findFreePort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
@@ -81,33 +81,28 @@ async function main(): Promise<void> {
 
   resetBaseCache();
   const base = await seedBase(db);
-  const today = tehranToday();
   const now = new Date();
 
   const food1 = await createFood(db, 'چلوکباب کوبیده زعفرانی', { defaultPriceRial: 150_000, category: 'کبابی' });
   const food2 = await createFood(db, 'چلوخورش قورمه‌سبزی', { defaultPriceRial: 120_000, category: 'خورشتی' });
 
-  await createOffering(db, {
-    serviceDate: today,
-    mealSlot: 'Lunch',
-    foodId: food1,
-    cafeteriaId: base.cafeteriaId,
+  // تنظیم پنجرهٔ زمانی وعدهٔ Lunch در روز جاری تهران تا هم رزرو و هم تحویل در هر ساعتی از شبانه‌روز مجاز باشد
+  const firstDeliverable = await createDeliverableOffering(db, {
     capacity: 50,
-    status: 'Published',
-    prices: { Student: 150_000 },
-    reserveOpensAt: new Date(now.getTime() - 3600_000),
-    reserveDeadline: new Date(now.getTime() + 12 * 3600_000),
+    price: 150_000,
   });
+  await db.execute(rawSql(`UPDATE meal_offerings SET food_id = $1 WHERE id = $2`, [food1, firstDeliverable.id]));
+
   await createOffering(db, {
-    serviceDate: today,
+    serviceDate: firstDeliverable.serviceDate,
     mealSlot: 'Lunch',
     foodId: food2,
     cafeteriaId: base.cafeteriaId,
     capacity: 50,
     status: 'Published',
     prices: { Student: 120_000 },
-    reserveOpensAt: new Date(now.getTime() - 3600_000),
-    reserveDeadline: new Date(now.getTime() + 12 * 3600_000),
+    reserveOpensAt: new Date(now.getTime() - 6 * 3600_000),
+    reserveDeadline: new Date(now.getTime() + 30 * 60_000),
   });
 
   await createStudent(db, {
@@ -118,6 +113,11 @@ async function main(): Promise<void> {
     pepper,
   });
 
+  await createStaff(db, {
+    username: 'superadmin1',
+    password: 'SuperAdmin#2026!',
+    role: 'SuperAdmin',
+  });
   await createStaff(db, {
     username: 'operator1',
     password: 'Operator#2026!',

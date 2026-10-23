@@ -927,55 +927,91 @@ export async function reissueQrToken(
  * مرز: پایان وعده (روز سرویس + ساعت پایان وعده به وقت تهران) + `noshow_grace_minutes`.
  * تبدیل به UTC با کسر ۳:۳۰ انجام می‌شود (ایران از ۲۰۲۲ ساعت تابستانی ندارد؛
  * تست واحد `tehran offset` این فرض را با `Intl` بررسی می‌کند).
- * بدون بازگشت وجه — سیاست در متن‌های راهنما نمایش داده می‌شود.
+ * پیش‌فرض (`noshow_refund = false`) بدون بازگشت وجه است؛ در صورت فعال‌سازی
+ * `noshow_refund = true`، مبلغ رزرو به اعتبار کیف پول بازگردانده می‌شود.
  */
 export async function markNoShows(deps: ServiceDeps): Promise<number> {
   const settings = await getSettings(deps);
   const grace = settings.noshowGraceMinutes;
+  const shouldRefund = settings.noShowRefund;
 
-  const updated = await deps.db.execute(
+  const candidates = await deps.db.execute(
     rawSql(
-      `UPDATE reservations r SET status = 'NoShow'
-       FROM meal_offerings o, meal_slots ms
-       WHERE r.offering_id = o.id
-         AND r.meal_slot_id = ms.id
-         AND r.status = 'Reserved'
+      `SELECT r.id
+       FROM reservations r
+       JOIN meal_offerings o ON r.offering_id = o.id
+       JOIN meal_slots ms ON r.meal_slot_id = ms.id
+       WHERE r.status = 'Reserved'
          AND ((o.service_date + ms.end_time) - interval '3 hours 30 minutes' + make_interval(mins => $1)) AT TIME ZONE 'UTC' < now()
-       RETURNING r.id, r.account_id AS "accountId", r.price_at_booking::text AS "priceRial"`,
+       LIMIT 500`,
       [grace],
     ),
   );
-  const rows = ((updated as unknown as { rows: { id: string; accountId: string; priceRial: string }[] }).rows ?? []) as {
-    id: string;
-    accountId: string;
-    priceRial: string;
-  }[];
+  const ids = ((candidates as unknown as { rows: { id: string }[] }).rows ?? []).map((r) => r.id);
+  let count = 0;
 
-  for (const row of rows) {
-    await deps.db.insert(reservationHistory).values({
-      reservationId: row.id,
-      fromStatus: 'Reserved',
-      toStatus: 'NoShow',
-      actorType: 'System',
-      actorLabel: 'worker',
-      note: 'عدم مراجعه پس از پایان فرجه',
+  for (const id of ids) {
+    const changed = await deps.db.transaction(async (tx) => {
+      const updated = await tx.execute(
+        rawSql(
+          `UPDATE reservations
+           SET status = 'NoShow'
+           WHERE id = $1 AND status = 'Reserved'
+           RETURNING id, account_id AS "accountId", price_at_booking::text AS "priceRial"`,
+          [id],
+        ),
+      );
+      const row = ((updated as unknown as { rows: { id: string; accountId: string; priceRial: string }[] }).rows ?? [])[0];
+      if (!row) return false;
+
+      const priceRial = Number(row.priceRial ?? 0);
+      if (shouldRefund && priceRial > 0) {
+        await lockAccountsForUpdate(tx, [row.accountId]);
+        await postLedger(tx, deps, {
+          type: 'AdminRefund',
+          idempotencyKey: `noshow-refund:${row.id}`,
+          reason: 'بازگشت وجه عدم مراجعه طبق سیاست سامانه',
+          actor: { type: 'System', id: '', label: 'worker' },
+          referenceType: 'Reservation',
+          referenceId: row.id,
+          legs: [
+            { accountId: row.accountId, amountRial: priceRial },
+            { systemAccount: 'MEAL_REVENUE', amountRial: -priceRial },
+          ],
+        });
+      }
+
+      await tx.insert(reservationHistory).values({
+        reservationId: row.id,
+        fromStatus: 'Reserved',
+        toStatus: 'NoShow',
+        actorType: 'System',
+        actorLabel: 'worker',
+        note: shouldRefund ? 'عدم مراجعه پس از پایان فرجه (با بازگشت اعتبار)' : 'عدم مراجعه پس از پایان فرجه',
+      });
+      await writeAudit(tx, {
+        actor: { type: 'System', id: '', label: 'worker' },
+        action: 'reservation.no_show',
+        targetType: 'Reservation',
+        targetId: row.id,
+        details: { priceRial, refunded: shouldRefund && priceRial > 0 },
+      });
+      await createNotification(tx, {
+        title: 'عدم مراجعه به وعدهٔ غذایی',
+        body:
+          shouldRefund && priceRial > 0
+            ? `رزرو شما به دلیل مراجعه نکردن در بازهٔ تحویل، «عدم مراجعه» ثبت شد و مبلغ ${(priceRial / 10).toLocaleString('fa-IR')} تومان به اعتبار کیف پول شما بازگشت.`
+            : 'رزرو شما به دلیل مراجعه نکردن در بازهٔ تحویل، «عدم مراجعه» ثبت شد. مطابق سیاست سامانه، مبلغی بازگردانده نمی‌شود.',
+        audience: 'Account',
+        accountId: row.accountId,
+        event: 'reservation.cancelled',
+      });
+      return true;
     });
-    await writeAudit(deps.db, {
-      actor: { type: 'System', id: '', label: 'worker' },
-      action: 'reservation.no_show',
-      targetType: 'Reservation',
-      targetId: row.id,
-      details: { priceRial: Number(row.priceRial) },
-    });
-    await createNotification(deps.db, {
-      title: 'عدم مراجعه به وعدهٔ غذایی',
-      body: 'رزرو شما به دلیل مراجعه نکردن در بازهٔ تحویل، «عدم مراجعه» ثبت شد. مطابق سیاست سامانه، مبلغی بازگردانده نمی‌شود.',
-      audience: 'Account',
-      accountId: row.accountId,
-      event: 'reservation.cancelled',
-    });
+    if (changed) count += 1;
   }
-  return rows.length;
+
+  return count;
 }
 
 /** آیا رزرو در فهرست «فعال» نمایش داده می‌شود؟ */

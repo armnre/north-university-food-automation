@@ -36,6 +36,7 @@ import { reportRoutes } from './routes/report.routes.js';
 import { reservationRoutes } from './routes/reservation.routes.js';
 import { settingsRoutes } from './routes/settings.routes.js';
 import { staffRoutes } from './routes/staff.routes.js';
+import { registerUploadedFilesRoute, uploadRoutes } from './routes/upload.routes.js';
 import type { ServiceDeps } from './types.js';
 
 export type BuildAppOptions = {
@@ -131,13 +132,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstan
     await app.register(swaggerUi, { routePrefix: '/api/docs', uiConfig: { docExpansion: 'list' } });
   }
 
-  // سرو کردن خروجی استاتیک فرانت‌اند فقط در صورت نیاز (گزینهٔ Docker)
+  // سرو امن تصاویر آپلودشدهٔ غذا از UPLOAD_DIR زیر مسیر /uploads/:fileName
+  await registerUploadedFilesRoute(app, deps);
+
+  // سرو کردن خروجی استاتیک فرانت‌اند در استقرار یکپارچه (SERVE_STATIC=true)
   if (env.SERVE_STATIC) {
     const webDist = resolve(process.cwd(), env.WEB_DIST_PATH || '../web/dist');
     if (existsSync(webDist)) {
       await app.register(fastifyStatic, { root: webDist, wildcard: false, prefix: '/' });
       app.setNotFoundHandler((request, reply) => {
-        if (request.url.startsWith('/api')) {
+        if (request.url.startsWith('/api') || request.url.startsWith('/uploads')) {
           return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'مورد درخواستی یافت نشد.' } });
         }
         return reply.sendFile('index.html');
@@ -152,6 +156,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstan
   await app.register(meRoutes(deps), { prefix: '/api/v1/me' });
   await app.register(adminRoutes(deps), { prefix: '/api/v1/admin' });
   await app.register(catalogRoutes(deps), { prefix: '/api/v1/catalog' });
+  await app.register(uploadRoutes(deps), { prefix: '/api/v1/uploads' });
   await app.register(offeringRoutes(deps), { prefix: '/api/v1/offerings' });
   await app.register(reservationRoutes(deps), { prefix: '/api/v1/reservations' });
   await app.register(deliveryRoutes(deps), { prefix: '/api/v1/delivery' });

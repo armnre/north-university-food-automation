@@ -43,3 +43,8 @@ tmp/
 
 # Generated screenshots are committed only under docs/screenshots
 apps/web/screenshots-tmp/
+
+# Local uploaded files (dev/test)
+.uploads/
+apps/api/.uploads/
+

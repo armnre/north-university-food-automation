@@ -12,6 +12,7 @@ export function mapOfferingToDto(row: OfferingRow, myPriceRial: number | null = 
     foodId: row.foodId,
     foodName: row.foodName,
     foodDescription: row.foodDescription,
+    imagePath: row.foodImagePath,
     cafeteriaId: row.cafeteriaId,
     cafeteriaName: row.cafeteriaName,
     capacity: row.capacity,

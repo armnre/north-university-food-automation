@@ -90,6 +90,9 @@ export const envSchema = z
 
     SERVE_STATIC: boolFromText(false),
     WEB_DIST_PATH: z.string().optional(),
+    UPLOAD_DIR: z.string().min(1).default('.uploads'),
+    FOOD_IMAGE_MAX_BYTES: intFromText(2_097_152).pipe(z.number().int().min(10_240).max(10_485_760)),
+    SHARP_DISABLE: boolFromText(false),
 
     ALLOW_DEMO_SEED: boolFromText(false),
     TEST_DATABASE_URL: z.string().optional(),

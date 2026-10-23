@@ -316,6 +316,14 @@ export const catalogSave = (input: { item: CatalogItem }) =>
   input.item.id
     ? api.put<{ id: string }>(`/catalog/${input.item.kind}/${input.item.id}`, { item: input.item })
     : api.post<{ id: string }>('/catalog', { item: input.item });
+export const uploadFoodImage = (file: File) =>
+  api.upload<{
+    url: string;
+    mimeType: 'image/webp' | 'image/jpeg' | 'image/png';
+    sizeBytes: number;
+    width: number | null;
+    height: number | null;
+  }>('/uploads/food-image', file);
 
 // --- منو و وعده‌ها ---------------------------------------------------------
 export type OfferingQuery = { from?: string; to?: string; cafeteriaId?: string; mealSlot?: string; status?: string; foodId?: string };

@@ -88,6 +88,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             foodId: offering.foodId,
             foodName: offering.foodName,
             foodDescription: offering.foodDescription,
+            imagePath: offering.foodImagePath,
             cafeteriaId: offering.cafeteriaId,
             cafeteriaName: offering.cafeteriaName,
             capacity: offering.capacity,

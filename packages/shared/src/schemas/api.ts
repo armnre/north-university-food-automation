@@ -202,6 +202,14 @@ export const catalogResponseSchema = z.object({
   ),
 });
 
+export const foodImageUploadResponseSchema = z.object({
+  url: z.string(),
+  mimeType: z.enum(['image/webp', 'image/jpeg', 'image/png']),
+  sizeBytes: z.number().int().min(1),
+  width: z.number().int().min(1).nullable(),
+  height: z.number().int().min(1).nullable(),
+});
+
 // ---------------------------------------------------------------------------
 // منو و قیمت‌گذاری
 // ---------------------------------------------------------------------------
@@ -249,6 +257,7 @@ export const offeringDtoSchema = z.object({
   foodId: z.string(),
   foodName: z.string(),
   foodDescription: z.string(),
+  imagePath: z.string().nullable(),
   cafeteriaId: z.string(),
   cafeteriaName: z.string(),
   capacity: z.number().int(),

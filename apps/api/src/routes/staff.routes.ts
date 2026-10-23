@@ -10,7 +10,10 @@ export function staffRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
   return async (app) => {
     app.get(
       '/',
-      { schema: { response: { 200: staffListResponseSchema }, tags: ['staff'], summary: 'فهرست کارکنان قابل مدیریت' } },
+      {
+        schema: { response: { 200: staffListResponseSchema }, tags: ['staff'], summary: 'فهرست کارکنان قابل مدیریت' },
+        preValidation: app.requirePermission(['users', 'operators']),
+      },
       async (request) => listStaff(deps, request.auth as Extract<AuthContext, { kind: 'staff' }>),
     );
 

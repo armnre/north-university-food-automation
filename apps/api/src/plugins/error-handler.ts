@@ -67,7 +67,7 @@ export async function registerErrorHandler(
 
     // خطاهای Fastify با وضعیت مشخص (bodyLimit، ۴۰۴، rate limit)
     const fastifyError = error as { statusCode?: number; code?: string; message?: string };
-    if (fastifyError.statusCode === 400) {
+    if (fastifyError.statusCode === 400 || fastifyError.code === 'FST_INVALID_MULTIPART_CONTENT_TYPE' || fastifyError.statusCode === 406) {
       void reply.status(400).send({ error: { code: 'VALIDATION', message: ERROR_MESSAGES_FA.VALIDATION } });
       return;
     }

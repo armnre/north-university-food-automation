@@ -9,10 +9,11 @@
 - **رزرو چندغذایی در یک وعده:** امکان انتخاب چند غذای مختلف در یک روز و یک وعده (صبحانه/ناهار/شام) با جلوگیری اتمیک از رزرو تکراری همان آیتم منو (`offering_id`) برای یک حساب.
 - **پرداخت مستقیم درگاه (Zarinpal v4) و کسر خودکار اعتبار:** تسویهٔ مستقیم سبد غذا از طریق درگاه بانکی بدون نیاز به شارژ دستی کیف پول توسط دانشجو؛ کسر خودکار اعتبار بازپرداخت قبلی، رعایت کف ۱۰٬۰۰۰ ریال شاپرک، تسویهٔ آیتم‌به‌آیتم با `SAVEPOINT` و انتقال وجه آیتم‌های تکمیل‌ظرفیت‌شده به اعتبار حساب.
 - **دفتر کل حسابداری دوطرفه (Double-Entry Append-Only):** ثبت تراکنش‌های غیرقابل‌ویرایش و غیرقابل‌حذف در سطح تریگر PostgreSQL با جمع صفر (`SUM(amount_rial) = 0`) و آشتی‌سازی دوره‌ای خودکار.
-- **تحویل سریع با بلیط تمام‌صفحهٔ QR و کد ۸ کاراکتری:** نمایش کد ۸ کاراکتری خوانا (بدون پیشوند `R-`) برای دانشجو، پذیرش هر دو حالت با/بدون `R-` توسط اپراتور، قفل ردیف اتمیک در تحویل هم‌زمان و پشتیبانی از فهرست آفلاین سلف.
+- **تحویل سریع با بلیط تمام‌صفحهٔ QR، کد ۸ کاراکتری و حالت آفلاین کامل:** نمایش کد ۸ کاراکتری خوانا (بدون پیشوند `R-`) برای دانشجو، پذیرش هر دو حالت با/بدون `R-` توسط اپراتور، مانیفست آفلاین مبتنی بر `SHA-256` در `IndexedDB` (بدون ارسال توکن خام)، صف همگام‌سازی idempotent با تشخیص و گزارش تعارض دو دستگاه آفلاین (`OfflineConflict`).
 - **وب‌اپلیکیشن پیش‌رونده (PWA) کاملاً بومی:** فونت محلی `Vazirmatn`، آیکن‌ها و لوگوی برداری داخلی، صفحهٔ آفلاین فارسی، راهنمای نصب اندروید/iOS و عدم کش مسیرهای `/api` و `/uploads` در Service Worker.
-- **فرآیند پس‌زمینهٔ مستقل (`food-worker`):** زمان‌بند مبتنی بر `Asia/Tehran` با قفل مشورتی `pg_try_advisory_lock` و ثبت تاریخچه در `job_runs` (ثبت `NoShow`، آشتی‌سازی پرداخت‌های در انتظار، پاک‌سازی نشست‌ها/کپچاها و بررسی سلامت دفتر کل).
-- **امنیت دفاع در عمق:** کوکی نشست `__Host-sid` (`HttpOnly; Secure; SameSite=Strict`)، توکن CSRF زمان‌ثابت، هش `Argon2id` برای کارکنان با مهاجرت خودکار هش‌های قدیمی `PBKDF2`، هش `HMAC-SHA256` با `pepper` برای کد ملی (بدون ذخیره یا لاگ کد ملی خام)، تفکیک نقش‌های دیتابیس (`food_migrator` و `food_app`) و بررسی بایت‌های جادویی و پاک‌سازی متادیتای EXIF در آپلود تصویر غذا.
+- **فرآیند پس‌زمینهٔ مستقل (`food-worker`):** زمان‌بند مبتنی بر `Asia/Tehran` با قفل مشورتی `pg_try_advisory_lock` و ثبت تاریخچه در `job_runs` (یادآوری وعده‌های رزروشده `send-meal-reminders`، ثبت `NoShow`، آشتی‌سازی پرداخت‌های در انتظار، پاک‌سازی نشست‌ها/کپچاها و بررسی سلامت دفتر کل).
+- **بکاپ رمزنگاری‌شده (`age`) و تمرین خودکار بازیابی:** رمزنگاری بکاپ شبانه با کلید عمومی (بدون حضور کلید خصوصی روی سرور)، فایل `.sha256`، نگه‌داری ۱۴ روزه و اسکریپت تمرین ماهانهٔ بازیابی ایزوله (`restore-drill.sh`) با بررسی تراز صفر دفتر کل.
+- **امنیت دفاع در عمق و نگهبان سراسری Fail-Closed:** کوکی نشست `__Host-sid` (`HttpOnly; Secure; SameSite=Strict`)، توکن CSRF زمان‌ثابت، هش `Argon2id` با مهاجرت خودکار هش‌های قدیمی `PBKDF2`، هش `HMAC-SHA256` با `pepper` برای کد ملی، نگهبان Fail-Closed برای مسیرهای `/api/v1/*`، تفکیک نقش‌های دیتابیس (`food_migrator` و `food_app`) و بررسی بایت‌های جادویی و پاک‌سازی متادیتای EXIF در آپلود تصویر غذا.
 
 ---
 
@@ -59,33 +60,41 @@ npm run dev
 ## دستورات کنترل کیفیت و تست
 
 ```bash
-npm run secrets:check      # اسکن مخزن برای اطمینان از نبود راز، کلید خصوصی یا لینک خارجی فرانت‌اند
+npm run secrets:check      # اسکن مخزن علیه کلیدها، IPهای عمومی و دامنه‌های واقعی غیرمجاز
+npm run docs:rbac          # بازتولید خودکار docs/RBAC.md از منبع واحد حقیقت مجوزها
 npm audit                  # بررسی آسیب‌پذیری‌های وابستگی‌ها (۰ آسیب‌پذیری)
+npm run format:check       # بررسی قالب‌بندی کدها با Prettier
 npm run lint               # بررسی قواعد ESLint
 npm run typecheck          # بررسی نوع‌ها در تمام workspaceها و اسکریپت‌ها
-npm run test               # اجرای تست‌های واحد (@food/shared)
-npm run test:integration   # اجرای ۱۳۲ تست یکپارچه روی PostgreSQL واقعی
-npm run loadtest           # آزمون بار autocannon و رقابت ۵۰ درخواست روی آخرین ۱۰ ظرفیت
-npm run test:e2e           # آزمون سرتاسری Playwright (نیازمند مرورگر Chromium)
+npm run test               # اجرای ۳۳ تست واحد (۴ فایل)
+npm run test:integration   # اجرای ۱۳۷ تست یکپارچه روی PostgreSQL واقعی (۸ فایل)
+npm run loadtest           # آزمون بار ۵ سناریویی روی PostgreSQL واقعی (مستند در docs/PERF.md)
+npm run test:e2e           # آزمون سرتاسری Playwright (نیازمند مرورگر Chromium؛ فعال در CI)
+npm run screenshots        # ثبت اسکرین‌شات‌های واقعی RTL در docs/screenshots (فعال در CI)
 npm run build              # کامپایل کامل بستهٔ مشترک، API و فرانت‌اند PWA
 ```
 
 ---
 
-## فهرست مستندات (`docs/`)
+## فهرست مستندات (`docs/` و `deploy/`)
 
-- [`docs/DEPLOY.md`](docs/DEPLOY.md) — راهنمای گام‌به‌گام استقرار روی سرور Ubuntu 24.04 + Plesk + PostgreSQL 16 (دامنهٔ نمونه `dining.example.edu`)
+- [`deploy/ADMIN_RUNBOOK_FA.md`](deploy/ADMIN_RUNBOOK_FA.md) — کتابچهٔ گام‌به‌گام راهبر سرور دانشگاه (Ubuntu 24.04 + Plesk + `SETUP_CODE` + TLS)
+- [`docs/GO_LIVE.md`](docs/GO_LIVE.md) — چک‌لیست نهایی راه‌اندازی عملیاتی و جدول امضای تحویل
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) — معماری استقرار، هم‌زیستی سرویس‌ها روی `<SERVER_IP>` و ساختار دایرکتری‌ها
+- [`docs/DEPLOY_TEST_LOG.md`](docs/DEPLOY_TEST_LOG.md) — خروجی واقعی تست اسکریپت‌های استقرار و بستهٔ تولیدی + گزارش صادقانهٔ موارد اجرا‌نشده
+- [`deploy/restore.md`](deploy/restore.md) — راهنمای رمزگشایی پشتیبان `age`، بازیابی اضطراری و تمرین ماهانه (`restore-drill.sh`)
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — تصمیمات محصولی نسخهٔ اول و راهنمای دقیق تغییر هر تصمیم در آینده
+- [`docs/PERF.md`](docs/PERF.md) — نتایج واقعی آزمون بار ۵ سناریویی، مشخصات سخت‌افزار و بهینه‌سازی‌های SQL
 - [`docs/PAYMENTS.md`](docs/PAYMENTS.md) — معماری پرداخت مستقیم زرین‌پال، کسر خودکار اعتبار، قانون ۱۰٬۰۰۰ ریال شاپرک و آشتی‌سازی
 - [`docs/CANCELLATION.md`](docs/CANCELLATION.md) — وضعیت لغو رزرو در نسخهٔ اول و راهنمای فعال‌سازی مجدد لغو دانشجویی
-- [`docs/SECURITY.md`](docs/SECURITY.md) — کنترل‌های امنیتی، مدیریت نشست/CSRF و تحلیل ریسک ورود دانشجویی
+- [`docs/SECURITY.md`](docs/SECURITY.md) — کنترل‌های امنیتی، نگهبان Fail-Closed و تحلیل ریسک ورود دانشجویی بدون رمز عبور
+- [`docs/RBAC.md`](docs/RBAC.md) — ماتریس خودکارتولیدشدهٔ نقش‌ها، مجوزها و تفکیک وظایف (`npm run docs:rbac`)
+- [`docs/QR_DELIVERY.md`](docs/QR_DELIVERY.md) — تحویل در سلف با QR، کد ۸ کاراکتری، مانیفست آفلاین `IndexedDB` و همگام‌سازی تعارض‌ها
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — معماری کلان سامانه و جریان داده
 - [`docs/DATABASE.md`](docs/DATABASE.md) — مدل داده، قیدها، تریگرهای Append-Only و نقش‌های PostgreSQL
 - [`docs/API.md`](docs/API.md) — مرجع مسیرهای REST API
-- [`docs/RBAC.md`](docs/RBAC.md) — ماتریس نقش‌ها، مجوزها و تفکیک وظایف
 - [`docs/RESERVATIONS.md`](docs/RESERVATIONS.md) — قوانین رزرو چندغذایی، هم‌زمانی و چرخهٔ وضعیت
 - [`docs/WALLET_AND_LEDGER.md`](docs/WALLET_AND_LEDGER.md) — دفتر کل دوطرفه و کیف پول اعتبار بازپرداخت
-- [`docs/QR_DELIVERY.md`](docs/QR_DELIVERY.md) — تحویل در سلف با QR، کد ۸ کاراکتری و همگام‌سازی آفلاین
 - [`docs/EXCEL_IMPORT.md`](docs/EXCEL_IMPORT.md) — واردسازی امن اکسل دانشجویان، پیش‌نمایش و بازگردانی (Undo)
 - [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) — کتابچهٔ عملیات روزانه، پایش و رفع اشکال
 - [`docs/TESTING.md`](docs/TESTING.md) — راهبرد تست واحد، یکپارچه، بار و سرتاسری
-- [`deploy/restore.md`](deploy/restore.md) — دستورالعمل بازیابی از پشتیبان (Disaster Recovery)

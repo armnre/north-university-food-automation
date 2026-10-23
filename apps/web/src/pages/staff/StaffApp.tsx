@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Briefcase,
   ChefHat,
   Building2,
   ClipboardList,
@@ -25,6 +26,7 @@ import type { StaffMe } from '../../lib/session';
 
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const StudentsPage = lazy(() => import('./StudentsPage'));
+const EmployeesPage = lazy(() => import('./EmployeesPage'));
 const ImportPage = lazy(() => import('./ImportPage'));
 const UsersPage = lazy(() => import('./UsersPage'));
 const CatalogPage = lazy(() => import('./CatalogPage'));
@@ -69,6 +71,7 @@ export default function StaffApp({ me }: { me: StaffMe }) {
       mobile: true,
     },
     { to: '/students', label: 'دانشجویان', icon: <GraduationCap />, perms: ['students'], el: <StudentsPage />, mobile: true },
+    { to: '/employees', label: 'کارمندان و اساتید', icon: <Briefcase />, perms: ['employees'], el: <EmployeesPage />, mobile: true },
     { to: '/import', label: 'واردسازی Excel', icon: <FileSpreadsheet />, perms: ['import'], el: <ImportPage /> },
     { to: '/foods', label: 'کتابخانه‌ی غذا', icon: <BookOpen />, perms: ['foods'], el: <FoodsPage />, mobile: true },
     {

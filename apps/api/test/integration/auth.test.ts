@@ -261,7 +261,7 @@ describe('محدودیت تلاش و کپچا', () => {
       studentNumber: student.studentNumber,
       nationalId: student.nationalId,
       captchaId,
-      captchaAnswer: '0',
+      captchaAnswer: '999999',
     });
     expect([400, 428]).toContain(withWrongId.status);
 

@@ -38,7 +38,6 @@
     "create-admin": "npm run create-admin --workspace @food/api",
     "import:zite": "tsx --env-file-if-exists=.env scripts/import-zite-export.ts",
     "loadtest": "npm run loadtest --workspace @food/api",
-    "screenshots": "npm run screenshots --workspace @food/web",
     "audit:deps": "npm audit --omit=dev",
     "secrets:check": "node scripts/check-no-secrets.mjs",
     "postinstall": "node scripts/fix-workspace-hoisting.mjs",

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { AlertTriangle, CheckCircle2, Download, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { financeAdjust, financeLedger } from '../../lib/api';
+import { financeAdjust, financeLedger, financePayments, resolveFinancePayment } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';
@@ -61,6 +61,8 @@ export default function FinancePage() {
     [type, dq, from, to, page],
   );
   const [open, setOpen] = useState(false);
+  const reviewQueue = useLoad(async () => await financePayments({ status: 'NeedsReview', limit: 50 }), []);
+  const [resolveTarget, setResolveTarget] = useState<{ id: string; amountRial: number; holderIdentifier: string; refId: string | null } | null>(null);
 
   const exportCsv = () =>
     data &&
@@ -136,6 +138,61 @@ export default function FinancePage() {
                 ))}
               </ul>
             )}
+          </div>
+        </div>
+      )}
+      {reviewQueue.data && reviewQueue.data.needsReviewCount > 0 && (
+        <div className="mb-6 rounded-xl border border-[hsl(var(--warning)/0.5)] bg-[hsl(var(--warning)/0.08)] p-4">
+          <div className="mb-3 flex items-center gap-2 font-bold text-[hsl(var(--warning))]">
+            <AlertTriangle className="h-5 w-5" />
+            <span>{faNum(reviewQueue.data.needsReviewCount)} پرداخت درگاه نیازمند بررسی فوری (NeedsReview)</span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">دانشجو / کاربر</TableHead>
+                  <TableHead className="text-right">مبلغ درگاه</TableHead>
+                  <TableHead className="text-right">کد مرجع / خطا</TableHead>
+                  <TableHead className="text-right">زمان</TableHead>
+                  {canWrite && <TableHead className="text-left">تعیین تکلیف</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reviewQueue.data.payments.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <div className="num font-semibold">{faDigits(p.holderIdentifier)}</div>
+                      <div className="text-xs text-muted-foreground">{p.holderName}</div>
+                    </TableCell>
+                    <TableCell className="num font-semibold">{rial(p.amountRial)}</TableCell>
+                    <TableCell className="font-mono text-xs" dir="ltr">
+                      <div>{p.refId || p.authority || '—'}</div>
+                      {p.lastError && <div className="text-[11px] text-destructive">{p.lastError}</div>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">{faDateTime(p.createdAt)}</TableCell>
+                    {canWrite && (
+                      <TableCell className="text-left">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setResolveTarget({
+                              id: p.id,
+                              amountRial: p.amountRial,
+                              holderIdentifier: p.holderIdentifier,
+                              refId: p.refId,
+                            })
+                          }
+                        >
+                          رسیدگی
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -245,7 +302,86 @@ export default function FinancePage() {
         </Button>
       </div>
       {canWrite && <AdjustDialog open={open} onClose={() => setOpen(false)} onDone={reload} />}
+      {canWrite && (
+        <ResolvePaymentDialog
+          target={resolveTarget}
+          onClose={() => setResolveTarget(null)}
+          onDone={() => {
+            setResolveTarget(null);
+            reviewQueue.reload();
+            reload();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function ResolvePaymentDialog({
+  target,
+  onClose,
+  onDone,
+}: {
+  target: { id: string; amountRial: number; holderIdentifier: string; refId: string | null } | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [action, setAction] = useState<'retry_settle' | 'mark_failed'>('retry_settle');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      const r = await resolveFinancePayment(target.id, { action, reason: reason.trim() });
+      toast.success(`وضعیت پرداخت به ${r.status} تغییر یافت.`);
+      setReason('');
+      onDone();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent dir="rtl">
+        <DialogHeader>
+          <DialogTitle>رسیدگی به پرداخت نیازمند بررسی</DialogTitle>
+          <DialogDescription>
+            حساب <span className="num font-semibold">{faDigits(target?.holderIdentifier ?? '')}</span> · مبلغ{' '}
+            <span className="num font-semibold">{rial(target?.amountRial ?? 0)}</span>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <RadioGroup value={action} onValueChange={(v) => setAction(v as 'retry_settle' | 'mark_failed')} className="grid gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <RadioGroupItem value="retry_settle" />
+              تأیید و تکمیل ثبت رزرو / انتقال به اعتبار کیف پول
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <RadioGroupItem value="mark_failed" />
+              ثبت به‌عنوان پرداخت ناموفق (فقط پس از اطمینان از عدم کسر وجه در پنل زرین‌پال)
+            </label>
+          </RadioGroup>
+          <div className="space-y-1.5">
+            <Label>شرح بررسی و مستند بانکی (حداقل ۵ کاراکتر)</Label>
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            انصراف
+          </Button>
+          <Button onClick={submit} disabled={busy || reason.trim().length < 5}>
+            {busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}
+            ثبت نتیجهٔ بررسی
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

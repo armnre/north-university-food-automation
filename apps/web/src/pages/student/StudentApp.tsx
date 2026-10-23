@@ -8,6 +8,7 @@ import StudentDashboard from './StudentDashboard';
 import MenuPage from './MenuPage';
 import MyReservations from './MyReservations';
 import WalletPage from './WalletPage';
+import PaymentResultPage from './PaymentResultPage';
 import NotificationsPage from './NotificationsPage';
 import ProfilePage from './ProfilePage';
 
@@ -49,6 +50,7 @@ export default function StudentApp({ me }: { me: StudentMe }) {
         <Route path="/menu" element={<MenuPage />} />
         <Route path="/reservations" element={<MyReservations />} />
         <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/payment/result" element={<PaymentResultPage />} />
         <Route path="/notifications" element={<NotificationsPage mode="notifications" />} />
         <Route path="/help" element={<NotificationsPage mode="help" />} />
         <Route path="/profile" element={<ProfilePage me={me} />} />

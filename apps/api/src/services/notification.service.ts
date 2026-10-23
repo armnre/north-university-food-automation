@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { NotificationEvent } from '@food/shared';
 import { accounts, employees, notificationOutbox, notificationReads, notifications, students } from '../db/schema/index.js';
 import type { ServiceDeps, Tx } from '../types.js';
+import { rawSql } from '../db/raw.js';
 
 /**
  * اعلان‌ها.
@@ -127,14 +128,17 @@ export async function markNotificationsRead(
   subject: { type: 'Account' | 'Staff'; id: string },
   notificationIds?: string[],
 ): Promise<number> {
+  const col = subject.type === 'Account' ? 'account_id' : 'staff_user_id';
   const visible = await target.execute(
     notificationIds && notificationIds.length > 0
-      ? sql`SELECT id FROM notifications WHERE id = ANY(${notificationIds}::uuid[]) AND (audience='Broadcast' OR (audience=${subject.type} AND ${
-          subject.type === 'Account' ? sql`account_id` : sql`staff_user_id`
-        } = ${subject.id}))`
-      : sql`SELECT id FROM notifications WHERE (audience='Broadcast' OR (audience=${subject.type} AND ${
-          subject.type === 'Account' ? sql`account_id` : sql`staff_user_id`
-        } = ${subject.id}))`,
+      ? rawSql(
+          `SELECT id FROM notifications WHERE id = ANY($1::uuid[]) AND (audience='Broadcast' OR (audience=$2 AND ${col} = $3::uuid))`,
+          [notificationIds, subject.type, subject.id],
+        )
+      : rawSql(`SELECT id FROM notifications WHERE (audience='Broadcast' OR (audience=$1 AND ${col} = $2::uuid))`, [
+          subject.type,
+          subject.id,
+        ]),
   );
   const ids = ((visible as unknown as { rows: { id: string }[] }).rows ?? []).map((r) => r.id);
   if (ids.length === 0) return 0;
@@ -148,8 +152,21 @@ export async function markNotificationsRead(
 
 /** اعلان هشدار به همهٔ مدیران ارشد (مثلاً `NeedsReview` یا ناسازگاری دفتر کل). */
 export async function alertSuperAdmins(deps: ServiceDeps, input: { title: string; body: string; event?: string }): Promise<number> {
-  const admins = await deps.db.execute(sql`SELECT id FROM staff_users WHERE role = 'SuperAdmin' AND status = 'Active'`);
-  const ids = ((admins as unknown as { rows: { id: string }[] }).rows ?? []).map((r) => r.id);
+  return alertStaffByRoles(deps, ['SuperAdmin'], input);
+}
+
+/** اعلان هشدار به امور مالی و مدیران ارشد (برای پرداخت‌های `NeedsReview`). */
+export async function alertFinanceAndAdmins(deps: ServiceDeps, input: { title: string; body: string; event?: string }): Promise<number> {
+  return alertStaffByRoles(deps, ['Finance', 'SuperAdmin'], input);
+}
+
+async function alertStaffByRoles(
+  deps: ServiceDeps,
+  roles: string[],
+  input: { title: string; body: string; event?: string },
+): Promise<number> {
+  const rows = await deps.db.execute(rawSql(`SELECT id FROM staff_users WHERE role = ANY($1::text[]) AND status = 'Active'`, [roles]));
+  const ids = ((rows as unknown as { rows: { id: string }[] }).rows ?? []).map((r) => r.id);
   for (const id of ids) {
     await createNotification(deps.db, {
       title: input.title,

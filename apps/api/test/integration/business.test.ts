@@ -894,6 +894,344 @@ describe('مالی و دفتر کل', () => {
 
     await assertLedgerInvariants();
   });
+
+  it('پرداخت مستقیم درگاه غیرفعال ⇒ checkout/start خطای PAYMENT_GATEWAY_DISABLED می‌دهد؛ ولی با اعتبار کامل بدون درگاه رزرو می‌شود', async () => {
+    const offering1 = await openOffering({ price: 50_000 });
+    const offering2 = await createOffering(db, {
+      serviceDate: tomorrow(),
+      foodId: await createFood(db, 'خوراک جوجه'),
+      prices: { Student: 60_000 },
+      reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+    });
+
+    // ۱) دانشجو بدون اعتبار و درگاه خاموش ⇒ ۴۰۹ بدون رزرو و بدون اعتبار رایگان
+    const studentNoCredit = await createStudent(db, { balanceRial: 0 });
+    const clientNoCredit = await loginStudentClient(studentNoCredit);
+    const blocked = await clientNoCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }],
+      idempotencyKey: randomHex(8),
+    });
+    expect(blocked.status).toBe(409);
+    expect((blocked.body as { error: { code: string } }).error.code).toBe('PAYMENT_GATEWAY_DISABLED');
+
+    // ۲) دانشجو با اعتبار بازگشتی کافی (payable = 0) ⇒ رزرو فوری و اتمیک حتی وقتی درگاه خاموش است
+    const studentWithCredit = await createStudent(db, { balanceRial: 150_000 });
+    const clientWithCredit = await loginStudentClient(studentWithCredit);
+    const idem = randomHex(8);
+    const instant = await clientWithCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }, { offeringId: offering2.id }],
+      idempotencyKey: idem,
+    });
+    expect(instant.status).toBe(200);
+    const body = instant.body as {
+      mode: string;
+      payableRial: number;
+      creditUsedRial: number;
+      balanceRial: number;
+      items: { ok: boolean; code: string | null }[];
+    };
+    expect(body.mode).toBe('instant');
+    expect(body.payableRial).toBe(0);
+    expect(body.creditUsedRial).toBe(110_000);
+    expect(body.balanceRial).toBe(40_000);
+    expect(body.items).toHaveLength(2);
+    expect(body.items.every((i) => i.ok && i.code)).toBe(true);
+
+    // بازپخش همان کلید idempotency ⇒ بدون کسر مجدد
+    const replay = await clientWithCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }, { offeringId: offering2.id }],
+      idempotencyKey: idem,
+    });
+    expect(replay.status).toBe(200);
+    expect((replay.body as { replay: boolean; balanceRial: number }).replay).toBe(true);
+    expect((replay.body as { balanceRial: number }).balanceRial).toBe(40_000);
+
+    await assertLedgerInvariants();
+  });
+
+  it('پرداخت مستقیم درگاه: کسر خودکار اعتبار جزئی، حداقل ۱۰٬۰۰۰ ریال شاپرک، callback هم‌زمان و رسید مالکیت‌دار', async () => {
+    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
+    try {
+      await db.execute(
+        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+      );
+
+      // الف) اعتبار ۴۵٬۰۰۰ ریال برای غذای ۵۰٬۰۰۰ ریالی ⇒ مابه‌التفاوت ۵٬۰۰۰ < ۱۰٬۰۰۰ ⇒ پرداخت درگاه ۱۰٬۰۰۰ و ماندن ۵٬۰۰۰ ریال در کیف پول
+      const offeringA = await openOffering({ price: 50_000 });
+      const studentMinEdge = await createStudent(db, { balanceRial: 45_000 });
+      const clientMin = createTestClient(sandboxApp.app);
+      await primeCsrf(clientMin);
+      await clientMin.post('/api/v1/auth/student/login', {
+        studentNumber: studentMinEdge.studentNumber,
+        nationalId: studentMinEdge.nationalId,
+      });
+
+      const startMin = await clientMin.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offeringA.id }],
+        idempotencyKey: randomHex(8),
+      });
+      expect(startMin.status).toBe(200);
+      const minBody = startMin.body as {
+        mode: string;
+        paymentId: string;
+        payableRial: number;
+        creditUsedRial: number;
+        creditRemainingNote: string | null;
+      };
+      expect(minBody.mode).toBe('gateway');
+      expect(minBody.payableRial).toBe(10_000);
+      expect(minBody.creditUsedRial).toBe(40_000);
+      expect(minBody.creditRemainingNote).toBeTruthy();
+
+      // سه callback هم‌زمان بدون کوکی نشست (عمومی)
+      const cbUrl = `/api/v1/payments/zarinpal/callback?paymentId=${minBody.paymentId}&Status=OK`;
+      const cbRes = await Promise.all([
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
+      ]);
+      expect(cbRes.every((r) => r.status === 303)).toBe(true);
+
+      // دقیقاً یک تراکنش OnlinePayment و یک رزرو ثبت شده و ۵٬۰۰۰ ریال اعتبار دست‌نخورده باقی مانده است
+      const resResult = await clientMin.post('/api/v1/payments/result', { paymentId: minBody.paymentId });
+      expect(resResult.status).toBe(200);
+      const receipt = resResult.body as {
+        status: string;
+        amountRial: number;
+        creditUsedRial: number;
+        refundedToWalletRial: number;
+        balanceRial: number;
+        items: { ok: boolean; code: string | null }[];
+      };
+      expect(receipt.status).toBe('Paid');
+      expect(receipt.amountRial).toBe(10_000);
+      expect(receipt.creditUsedRial).toBe(40_000);
+      expect(receipt.refundedToWalletRial).toBe(0);
+      expect(receipt.balanceRial).toBe(5_000);
+      expect(receipt.items).toHaveLength(1);
+      expect(receipt.items[0]?.ok).toBe(true);
+
+      // دانشجوی دیگر به رسید دسترسی ندارد (IDOR ⇒ ۴۰۴)
+      const stranger = await createStudent(db);
+      const strangerClient = createTestClient(sandboxApp.app);
+      await primeCsrf(strangerClient);
+      await strangerClient.post('/api/v1/auth/student/login', {
+        studentNumber: stranger.studentNumber,
+        nationalId: stranger.nationalId,
+      });
+      const idor = await strangerClient.post('/api/v1/payments/result', { paymentId: minBody.paymentId });
+      expect(idor.status).toBe(404);
+
+      await assertLedgerInvariants();
+    } finally {
+      await sandboxApp.close();
+    }
+  });
+
+  it('تکمیل ظرفیت یکی از آیتم‌ها حین حضور در درگاه ⇒ رزرو آیتم سالم + انتقال دقیق مابقی به اعتبار کیف پول', async () => {
+    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
+    try {
+      await db.execute(
+        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+      );
+
+      const itemAvailable = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'قورمه‌سبزی'),
+        capacity: 5,
+        prices: { Student: 50_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+      const itemLastSpot = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'کباب بختیاری'),
+        capacity: 1,
+        prices: { Student: 60_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+
+      const studentA = await createStudent(db, { balanceRial: 0 });
+      const studentB = await createStudent(db, { balanceRial: 100_000 });
+
+      const clientA = createTestClient(sandboxApp.app);
+      await primeCsrf(clientA);
+      await clientA.post('/api/v1/auth/student/login', { studentNumber: studentA.studentNumber, nationalId: studentA.nationalId });
+
+      // دانشجوی الف پرداخت هر دو آیتم (۱۱۰٬۰۰۰ ریال) را شروع می‌کند
+      const started = await clientA.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: itemAvailable.id }, { offeringId: itemLastSpot.id }],
+        idempotencyKey: randomHex(8),
+      });
+      expect(started.status).toBe(200);
+      const paymentId = (started.body as { paymentId: string }).paymentId;
+
+      // در حالی که دانشجوی الف در صفحهٔ بانک است، دانشجوی ب آخرین ظرفیت آیتم دوم را می‌گیرد!
+      const clientB = createTestClient(sandboxApp.app);
+      await primeCsrf(clientB);
+      await clientB.post('/api/v1/auth/student/login', { studentNumber: studentB.studentNumber, nationalId: studentB.nationalId });
+      const sniped = await clientB.post('/api/v1/me/reservations', { offeringId: itemLastSpot.id, idempotencyKey: randomHex(8) });
+      expect(sniped.status).toBe(200);
+
+      // بازگشت موفق دانشجوی الف از درگاه
+      const cb = await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=OK`);
+      expect(cb.status).toBe(303);
+
+      const res = await clientA.post('/api/v1/payments/result', { paymentId });
+      expect(res.status).toBe(200);
+      const receipt = res.body as {
+        status: string;
+        refundedToWalletRial: number;
+        balanceRial: number;
+        items: { offeringId: string; ok: boolean; errorCode: string | null }[];
+      };
+      expect(receipt.status).toBe('Paid');
+      expect(receipt.refundedToWalletRial).toBe(60_000);
+      expect(receipt.balanceRial).toBe(60_000);
+      expect(receipt.items.find((i) => i.offeringId === itemAvailable.id)?.ok).toBe(true);
+      expect(receipt.items.find((i) => i.offeringId === itemLastSpot.id)?.ok).toBe(false);
+      expect(receipt.items.find((i) => i.offeringId === itemLastSpot.id)?.errorCode).toBe('CAPACITY_FULL');
+
+      await assertLedgerInvariants();
+    } finally {
+      await sandboxApp.close();
+    }
+  });
+
+  it('لبهٔ درگاه: استعلام verify حتی در Status=NOK، مغایرت مبلغ، خطای داخلی پس از verify (NeedsReview + هشدار مالی) و آشتی‌سازی', async () => {
+    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
+    try {
+      await db.execute(
+        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+      );
+      const finance = await createStaff(db, { role: 'Finance' });
+      const superAdmin = await createStaff(db, { role: 'SuperAdmin' });
+
+      const offering = await openOffering({ capacity: 10, price: 80_000 });
+      const student = await createStudent(db, { balanceRial: 0 });
+      const client = createTestClient(sandboxApp.app);
+      await primeCsrf(client);
+      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
+
+      let verifyCalls = 0;
+      let verifyMode: 'fail' | 'ok' | 'mismatch' = 'fail';
+      sandboxApp.app.deps.gatewayOverride = {
+        name: 'sandbox',
+        async request({ amountRial }) {
+          const authority = `custom_${randomHex(8)}`;
+          return { redirectUrl: `/api/v1/payments/sandbox/redirect?authority=${authority}&amount=${amountRial}`, authority };
+        },
+        async verify({ amountRial }) {
+          verifyCalls += 1;
+          if (verifyMode === 'fail') return { ok: false, code: -51, message: 'لغو توسط کاربر' };
+          if (verifyMode === 'mismatch') return { ok: true, code: 100, refId: 'REF-MISMATCH', amountRial: amountRial - 1_000 };
+          return { ok: true, code: 100, refId: 'REF-PAID-100', amountRial };
+        },
+      };
+
+      // ۱) Status=NOK واقعی: verify فراخوانی می‌شود و پرداخت Failed می‌گردد
+      const p1 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid1 = (p1.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid1}&Status=NOK`);
+      expect(verifyCalls).toBe(1);
+      const [row1] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid1]);
+      expect(row1?.status).toBe('Failed');
+
+      // ۲) Status=NOK دستکاری‌شده ولی درگاه واقعاً تأیید می‌کند (code=100) ⇒ پرداخت Paid و رزرو ثبت می‌شود!
+      verifyMode = 'ok';
+      const p2 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid2 = (p2.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid2}&Status=NOK`);
+      expect(verifyCalls).toBe(2);
+      const [row2] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid2]);
+      expect(row2?.status).toBe('Paid');
+
+      // ۳) مغایرت مبلغ درگاه ⇒ NeedsReview + اعلان هشدار برای Finance و SuperAdmin
+      const offering2 = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'خورش قیمه'),
+        prices: { Student: 70_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+      verifyMode = 'mismatch';
+      const p3 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering2.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid3 = (p3.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid3}&Status=OK`);
+      const [row3] = await query<{ status: string; last_error: string }>(db, `SELECT status, last_error FROM payments WHERE id = $1`, [
+        pid3,
+      ]);
+      expect(row3?.status).toBe('NeedsReview');
+      expect(row3?.last_error).toBe('amount_mismatch');
+
+      const alerts = await query<{ staff_user_id: string }>(
+        db,
+        `SELECT staff_user_id FROM notifications WHERE audience = 'Staff' AND event = 'system.alert'`,
+      );
+      const alertedIds = alerts.map((a) => a.staff_user_id);
+      expect(alertedIds).toContain(finance.id);
+      expect(alertedIds).toContain(superAdmin.id);
+
+      // ۴) خطای داخلی پس از verify موفق ⇒ NeedsReview با settlement_failed و سپس ترمیم با reconcilePendingPayments
+      const offering3 = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'ماکارونی'),
+        prices: { Student: 65_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+      verifyMode = 'ok';
+      const p4 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering3.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid4 = (p4.body as { paymentId: string }).paymentId;
+
+      const { settleVerifiedPayment, reconcilePendingPayments } = await import('../../src/services/payment.service.js');
+      const simFail = await settleVerifiedPayment(sandboxApp.app.deps, {
+        paymentId: pid4,
+        refId: 'REF-ERR-1',
+        gatewayName: 'sandbox',
+        ip: '127.0.0.1',
+        forceSimulateInternalError: true,
+      });
+      expect(simFail.status).toBe('needs_review');
+      const [row4Before] = await query<{ status: string; last_error: string }>(
+        db,
+        `SELECT status, last_error FROM payments WHERE id = $1`,
+        [pid4],
+      );
+      expect(row4Before?.status).toBe('NeedsReview');
+      expect(row4Before?.last_error).toBe('settlement_failed');
+
+      // اجرای job آشتی‌سازی ⇒ پرداخت تأییدشده تسویه و Paid می‌شود
+      const recon = await reconcilePendingPayments(sandboxApp.app.deps, 30);
+      expect(recon.needsReviewRetried).toBe(1);
+      const [row4After] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid4]);
+      expect(row4After?.status).toBe('Paid');
+
+      // ۵) پنل مالی NeedsReview را می‌بیند و می‌تواند تعیین تکلیف کند
+      const finClient = await loginStaff(sandboxApp.app, finance.username, finance.password);
+      const finList = await finClient.get<{ needsReviewCount: number }>('/api/v1/finance/payments?status=NeedsReview');
+      expect(finList.status).toBe(200);
+      expect((finList.body as { needsReviewCount: number }).needsReviewCount).toBe(1); // pid3
+      const resolved = await finClient.post(`/api/v1/finance/payments/${pid3}/resolve`, {
+        action: 'mark_failed',
+        reason: 'مغایرت مبلغ با شاپرک بررسی و وجه عودت داده شد',
+      });
+      expect(resolved.status).toBe(200);
+
+      await assertLedgerInvariants();
+    } finally {
+      await sandboxApp.close();
+    }
+  });
 });
 
 describe('NoShow و تنظیمات', () => {

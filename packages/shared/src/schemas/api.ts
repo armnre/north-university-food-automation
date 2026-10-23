@@ -657,6 +657,91 @@ export const walletResponseSchema = z.object({
   ),
 });
 
+export const checkoutStartRequestSchema = z.object({
+  items: z
+    .array(z.object({ offeringId: uuidSchema }))
+    .min(1)
+    .max(30),
+  idempotencyKey: idempotencyKeySchema,
+});
+
+export const paymentItemResultSchema = z.object({
+  offeringId: uuidSchema,
+  foodName: z.string(),
+  serviceDate: serviceDateSchema,
+  mealSlotTitle: z.string(),
+  priceRial: z.number().int(),
+  ok: z.boolean(),
+  reservationId: uuidSchema.nullable(),
+  code: z.string().nullable(),
+  error: z.string().nullable(),
+  errorCode: z.string().nullable(),
+});
+
+export const checkoutStartResponseSchema = z.object({
+  mode: z.enum(['instant', 'gateway']),
+  paymentId: uuidSchema.nullable(),
+  redirectUrl: z.string().nullable(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
+  payableRial: z.number().int(),
+  creditRemainingNote: z.string().nullable(),
+  items: z.array(paymentItemResultSchema),
+  balanceRial: z.number().int(),
+  replay: z.boolean(),
+  message: z.string(),
+});
+
+export const paymentResultRequestSchema = z.object({
+  paymentId: uuidSchema,
+});
+
+export const paymentResultResponseSchema = z.object({
+  paymentId: uuidSchema,
+  status: z.enum(['Pending', 'Paid', 'Failed', 'NeedsReview']),
+  gateway: z.string(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
+  amountRial: z.number().int(),
+  refundedToWalletRial: z.number().int(),
+  refId: z.string().nullable(),
+  trackingCode: z.string().nullable(),
+  createdAt: z.string(),
+  verifiedAt: z.string().nullable(),
+  items: z.array(paymentItemResultSchema),
+  balanceRial: z.number().int(),
+  message: z.string(),
+});
+
+export const financePaymentDtoSchema = z.object({
+  id: uuidSchema,
+  gateway: z.string(),
+  status: z.enum(['Pending', 'Paid', 'Failed', 'NeedsReview']),
+  amountRial: z.number().int(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
+  authority: z.string().nullable(),
+  refId: z.string().nullable(),
+  callbackCount: z.number().int(),
+  lastError: z.string().nullable(),
+  createdAt: z.string(),
+  verifiedAt: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  resolutionNote: z.string().nullable(),
+  holderIdentifier: z.string(),
+  holderName: z.string(),
+});
+
+export const financePaymentsResponseSchema = z.object({
+  payments: z.array(financePaymentDtoSchema),
+  needsReviewCount: z.number().int(),
+});
+
+export const financePaymentResolveRequestSchema = z.object({
+  action: z.enum(['retry_settle', 'mark_failed']),
+  reason: z.string().trim().min(5, 'ثبت دلیل و مستند بررسی بانکی الزامی است (حداقل ۵ کاراکتر).').max(500),
+});
+
 // ---------------------------------------------------------------------------
 // واردسازی اکسل
 // ---------------------------------------------------------------------------

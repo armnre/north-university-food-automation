@@ -67,6 +67,256 @@ export function computeScanWindow(
   };
 }
 
+export type ValidatedCheckoutOffering = {
+  offeringId: string;
+  foodName: string;
+  serviceDate: string;
+  mealSlotTitle: string;
+  priceRial: number;
+};
+
+/**
+ * اعتبارسنجی یک آیتم منو پیش از شروع پرداخت یا رزرو فوری (بدون تغییر دیتابیس).
+ * همهٔ شرایط زمانی، ظرفیت، گروه مشتری و عدم رزرو تکراری بررسی می‌شوند.
+ */
+export async function validateOfferingForCheckout(
+  target: Tx | ServiceDeps['db'],
+  input: { accountId: string; customerGroup: CustomerAuth['customerGroup']; offeringId: string },
+): Promise<ValidatedCheckoutOffering> {
+  const rows = await target.execute(
+    rawSql(
+      `SELECT o.id, o.status, o.service_date AS "serviceDate", o.capacity, o.reserved_count AS "reservedCount",
+              o.reserve_opens_at AS "reserveOpensAt", o.reserve_deadline AS "reserveDeadline",
+              f.name AS "foodName", ms.title AS "mealSlotTitle", ms.start_time AS "slotStartTime"
+       FROM meal_offerings o
+       JOIN foods f ON f.id = o.food_id
+       JOIN meal_slots ms ON ms.id = o.meal_slot_id
+       WHERE o.id = $1`,
+      [input.offeringId],
+    ),
+  );
+  const row = ((rows as unknown as { rows: Record<string, unknown>[] }).rows ?? [])[0];
+  if (!row) fail('NOT_FOUND', 'این وعده برای رزرو در دسترس نیست.');
+
+  const foodName = String(row.foodName ?? 'وعدهٔ غذایی');
+  const status = String(row.status ?? '');
+  if (status !== 'Published') {
+    if (status === 'SoldOut') fail('CAPACITY_FULL', `ظرفیت «${foodName}» تکمیل شده است.`);
+    if (status === 'Cancelled') fail('CONFLICT', `وعدهٔ «${foodName}» لغو شده است.`);
+    fail('CONFLICT', `«${foodName}» هنوز برای رزرو منتشر نشده است.`);
+  }
+
+  const serviceDate = String(row.serviceDate);
+  const today = tehranToday();
+  if (serviceDate < today) fail('DEADLINE_PASSED', `زمان وعدهٔ «${foodName}» گذشته است.`);
+
+  const now = new Date();
+  const reserveOpensAt = row.reserveOpensAt instanceof Date ? row.reserveOpensAt : new Date(String(row.reserveOpensAt));
+  const reserveDeadline = row.reserveDeadline instanceof Date ? row.reserveDeadline : new Date(String(row.reserveDeadline));
+  if (reserveOpensAt.getTime() > now.getTime()) {
+    fail('CONFLICT', `رزرو «${foodName}» از ${formatFaDateTime(reserveOpensAt)} باز می‌شود.`);
+  }
+  if (reserveDeadline.getTime() <= now.getTime()) {
+    fail('DEADLINE_PASSED', `مهلت رزرو «${foodName}» در ${formatFaDateTime(reserveDeadline)} به پایان رسیده است.`);
+  }
+
+  const mealStart = tehranDateTimeToUtc(serviceDate, String(row.slotStartTime ?? '12:00').slice(0, 5));
+  if (mealStart.getTime() <= now.getTime()) {
+    fail('DEADLINE_PASSED', `زمان شروع وعدهٔ «${foodName}» گذشته است.`);
+  }
+
+  const price = await priceForGroup(target as Tx, input.offeringId, input.customerGroup);
+  if (price == null) fail('FORBIDDEN', `«${foodName}» برای گروه کاربری شما در دسترس نیست.`);
+
+  if (Number(row.reservedCount ?? 0) >= Number(row.capacity ?? 0)) {
+    fail('CAPACITY_FULL', `متأسفانه ظرفیت «${foodName}» تکمیل شده است.`);
+  }
+
+  const alreadyReserved = await target
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      sql`${reservations.accountId} = ${input.accountId} AND ${reservations.offeringId} = ${input.offeringId} AND ${reservations.status} IN ('Reserved','Delivered')`,
+    )
+    .limit(1);
+  if (alreadyReserved[0]) {
+    fail('DUPLICATE_OFFERING', `«${foodName}» را قبلاً رزرو کرده‌اید.`);
+  }
+
+  return {
+    offeringId: input.offeringId,
+    foodName,
+    serviceDate,
+    mealSlotTitle: String(row.mealSlotTitle ?? ''),
+    priceRial: price,
+  };
+}
+
+/**
+ * رزرو اتمیک یک آیتم درون تراکنش قفل‌شده (قابل فراخوانی داخل SAVEPOINT هنگام تسویهٔ درگاه).
+ */
+export async function reserveInLockedTx(
+  tx: Tx,
+  deps: ServiceDeps,
+  input: {
+    accountId: string;
+    customerGroup: CustomerAuth['customerGroup'];
+    actor: Actor;
+    holderKind: 'Student' | 'Employee';
+    employeeId?: string;
+    offeringId: string;
+    idemKey: string;
+    expectedPriceRial?: number;
+    note?: string;
+    ip?: string;
+    userAgent?: string;
+  },
+): Promise<{ reservationId: string; code: string; priceRial: number; replay: boolean }> {
+  const prior = await tx.select().from(reservations).where(eq(reservations.idempotencyKey, input.idemKey)).limit(1);
+  if (prior[0]) {
+    return {
+      reservationId: prior[0].id,
+      code: prior[0].code,
+      priceRial: Number(prior[0].priceAtBooking),
+      replay: true,
+    };
+  }
+
+  const offering = await lockOfferingForUpdate(tx, input.offeringId);
+  if (!offering) fail('NOT_FOUND', 'این وعده برای رزرو در دسترس نیست.');
+  if (offering.status !== 'Published') {
+    if (offering.status === 'SoldOut') fail('CAPACITY_FULL', 'ظرفیت این وعده تکمیل شده است.');
+    if (offering.status === 'Cancelled') fail('CONFLICT', 'این وعده لغو شده است.');
+    fail('CONFLICT', 'این وعده هنوز برای رزرو منتشر نشده است.');
+  }
+
+  const today = tehranToday();
+  if (offering.serviceDate < today) fail('DEADLINE_PASSED', 'زمان این وعده گذشته است.');
+
+  const now = new Date();
+  if (offering.reserveOpensAt.getTime() > now.getTime()) {
+    fail('CONFLICT', `رزرو این وعده از ${formatFaDateTime(offering.reserveOpensAt)} باز می‌شود.`);
+  }
+  if (offering.reserveDeadline.getTime() <= now.getTime()) {
+    fail('DEADLINE_PASSED', `مهلت رزرو این وعده در ${formatFaDateTime(offering.reserveDeadline)} به پایان رسیده است.`);
+  }
+
+  const slotResult = await tx.execute(rawSql(`SELECT start_time AS "startTime" FROM meal_slots WHERE id = $1`, [offering.mealSlotId]));
+  const slot = ((slotResult as unknown as { rows: { startTime: string }[] }).rows ?? [])[0];
+  const mealStart = tehranDateTimeToUtc(offering.serviceDate, String(slot?.startTime ?? '12:00').slice(0, 5));
+  if (mealStart.getTime() <= now.getTime()) {
+    fail('DEADLINE_PASSED', 'زمان شروع این وعده گذشته است.');
+  }
+
+  const price = await priceForGroup(tx, input.offeringId, input.customerGroup);
+  if (price == null) fail('FORBIDDEN', 'این غذا برای شما در دسترس نیست.');
+  if (input.expectedPriceRial != null && price !== input.expectedPriceRial) {
+    fail('CONFLICT', 'قیمت این غذا حین پرداخت تغییر کرده است؛ مبلغ آن به اعتبار کیف پول شما منتقل شد.');
+  }
+
+  const alreadyReserved = await tx
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      sql`${reservations.accountId} = ${input.accountId} AND ${reservations.offeringId} = ${input.offeringId} AND ${reservations.status} IN ('Reserved','Delivered')`,
+    )
+    .limit(1);
+  if (alreadyReserved[0]) {
+    fail('DUPLICATE_OFFERING', 'این غذا را قبلاً رزرو کرده‌اید.');
+  }
+
+  const capacityUpdated = await tx
+    .update(mealOfferings)
+    .set({ reservedCount: sql`${mealOfferings.reservedCount} + 1` })
+    .where(
+      sql`${mealOfferings.id} = ${input.offeringId} AND ${mealOfferings.reservedCount} < ${mealOfferings.capacity} AND ${mealOfferings.status} = 'Published'`,
+    )
+    .returning({ reservedCount: mealOfferings.reservedCount });
+  if (capacityUpdated.length === 0) fail('CAPACITY_FULL', 'متأسفانه ظرفیت این وعده تکمیل شده است.');
+
+  if (price > 0) {
+    await postLedger(tx, deps, {
+      type: 'ReservationDebit',
+      idempotencyKey: `debit:${input.idemKey}`,
+      reason: 'کسر بابت رزرو غذا',
+      actor: input.actor,
+      referenceType: 'Reservation',
+      legs: [
+        { accountId: input.accountId, amountRial: -price },
+        { systemAccount: 'MEAL_REVENUE', amountRial: price },
+      ],
+    });
+  }
+
+  let reservationId: string;
+  let code: string;
+  try {
+    const [created] = await tx
+      .insert(reservations)
+      .values({
+        code: newReservationCode(),
+        accountId: input.accountId,
+        offeringId: input.offeringId,
+        serviceDate: offering.serviceDate,
+        mealSlotId: offering.mealSlotId,
+        cafeteriaId: offering.cafeteriaId,
+        priceAtBooking: price,
+        customerGroupAtBooking: input.customerGroup,
+        status: 'Reserved',
+        idempotencyKey: input.idemKey,
+        qrToken: randomHex(24),
+        qrIssuedAt: new Date(),
+      })
+      .returning({ id: reservations.id, code: reservations.code });
+    reservationId = created!.id;
+    code = created!.code;
+  } catch (error) {
+    const message = dbErrorText(error);
+    if (/reservations_one_live_per_offering/.test(message) || pgErrorCode(error) === '23505') {
+      fail('DUPLICATE_OFFERING', 'این غذا را قبلاً رزرو کرده‌اید.');
+    }
+    throw error;
+  }
+
+  await tx.insert(reservationHistory).values({
+    reservationId,
+    fromStatus: '',
+    toStatus: 'Reserved',
+    actorType: input.holderKind,
+    actorId: input.actor.id,
+    actorLabel: input.actor.label,
+    note: input.note ?? 'رزرو توسط کاربر',
+  });
+
+  await writeAudit(tx, {
+    actor: input.actor,
+    action: 'reservation.create',
+    targetType: 'Reservation',
+    targetId: reservationId,
+    details: { offeringId: input.offeringId, priceRial: price, customerGroup: input.customerGroup },
+    ip: input.ip,
+    userAgent: input.userAgent,
+  });
+
+  await createNotification(tx, {
+    title: 'رزرو شما ثبت شد',
+    body: `رزرو «${await foodNameOf(tx, input.offeringId)}» برای ${formatFaDateTime(mealStart)} با موفقیت ثبت شد. کد تحویل: ${code.replace(/^R-/, '')}`,
+    audience: 'Account',
+    accountId: input.accountId,
+    event: 'reservation.confirmed',
+  });
+  if (input.holderKind === 'Employee' && input.employeeId) {
+    const mobile = await employeeMobile(tx, input.employeeId);
+    await queueSms(tx, {
+      recipient: mobile,
+      message: `رزرو غذای شما ثبت شد. کد تحویل: ${code.replace(/^R-/, '')}`,
+      accountId: input.accountId,
+    });
+  }
+
+  return { reservationId, code, priceRial: price, replay: false };
+}
+
 /** رزرو یک وعده برای مشتری جاری (دانشجو یا کارمند). */
 export async function reserveMeal(deps: ServiceDeps, input: ReserveInput): Promise<ReserveResult> {
   const { auth, offeringId, ip } = input;

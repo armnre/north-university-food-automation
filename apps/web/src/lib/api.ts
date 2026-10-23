@@ -419,6 +419,54 @@ export const studentCheckout = (input: { offeringIds?: string[]; items?: { offer
     items: (input.items ?? (input.offeringIds ?? []).map((offeringId) => ({ offeringId }))).slice(0, 30),
     idempotencyKey: input.idempotencyKey,
   });
+export type PaymentItemResultDto = {
+  offeringId: string;
+  foodName: string;
+  serviceDate: string;
+  mealSlotTitle: string;
+  priceRial: number;
+  ok: boolean;
+  reservationId: string | null;
+  code: string | null;
+  error: string | null;
+  errorCode: string | null;
+};
+
+export type CheckoutStartDto = {
+  mode: 'instant' | 'gateway';
+  paymentId: string | null;
+  redirectUrl: string | null;
+  totalRial: number;
+  creditUsedRial: number;
+  payableRial: number;
+  creditRemainingNote: string | null;
+  items: PaymentItemResultDto[];
+  balanceRial: number;
+  replay: boolean;
+  message: string;
+};
+
+export type PaymentResultDto = {
+  paymentId: string;
+  status: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview';
+  gateway: string;
+  totalRial: number;
+  creditUsedRial: number;
+  amountRial: number;
+  refundedToWalletRial: number;
+  refId: string | null;
+  trackingCode: string | null;
+  createdAt: string;
+  verifiedAt: string | null;
+  items: PaymentItemResultDto[];
+  balanceRial: number;
+  message: string;
+};
+
+export const checkoutStart = (input: { items: { offeringId: string }[]; idempotencyKey: string }) =>
+  api.post<CheckoutStartDto>('/payments/checkout/start', input);
+export const paymentResult = (paymentId: string) =>
+  api.post<PaymentResultDto>('/payments/result', { paymentId });
 export const studentReservations = () => api.get<Record<string, unknown>>('/me/reservations');
 export const reissueQr = (id: string) => api.post<{ id: string; qrToken: string; issuedAt: string }>(`/me/reservations/${id}/qr/reissue`);
 export const studentWallet = () => api.get<Record<string, unknown>>('/me/wallet');
@@ -475,6 +523,30 @@ export const financeAdjust = (input: {
 
 export const financeLedger = (query: { type?: string; search?: string; from?: string; to?: string; customerGroup?: string; offset?: number; limit?: number } = {}) =>
   api.get<Record<string, unknown>>('/finance/ledger', query);
+export const financePayments = (query: { status?: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview'; offset?: number; limit?: number } = {}) =>
+  api.get<{
+    payments: {
+      id: string;
+      gateway: string;
+      status: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview';
+      amountRial: number;
+      totalRial: number;
+      creditUsedRial: number;
+      authority: string | null;
+      refId: string | null;
+      callbackCount: number;
+      lastError: string | null;
+      createdAt: string;
+      verifiedAt: string | null;
+      resolvedAt: string | null;
+      resolutionNote: string | null;
+      holderIdentifier: string;
+      holderName: string;
+    }[];
+    needsReviewCount: number;
+  }>('/finance/payments', query);
+export const resolveFinancePayment = (id: string, body: { action: 'retry_settle' | 'mark_failed'; reason: string }) =>
+  api.post<{ status: 'Paid' | 'Failed' | 'NeedsReview' }>(`/finance/payments/${id}/resolve`, body);
 export const financeReconcile = () => api.get<Record<string, unknown>>('/finance/reconcile');
 
 // --- واردسازی اکسل -------------------------------------------------------

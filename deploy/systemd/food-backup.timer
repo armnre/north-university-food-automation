@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily PostgreSQL and Uploads Backup for Food Automation (03:30 Asia/Tehran)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

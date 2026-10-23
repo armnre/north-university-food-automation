@@ -38,7 +38,7 @@ function FacetSelect({ label, value, facets, onChange, fmt }: { label: string; v
 
 export default function StudentsPage() {
   const { me } = useSession();
-  const canEdit = me?.kind === 'staff' && me.staff.perms.includes('students');
+  const canEdit = me?.kind === 'staff' && me.staff.perms.includes('studentStatus');
   const [q, setQ] = useState('');
   const [dq] = useDebounce(q, 350);
   const [f, setF] = useState<Filters>({});
@@ -52,7 +52,7 @@ export default function StudentsPage() {
   const [exporting, setExporting] = useState(false);
   const setFilter = (k: keyof Filters, v?: string) => { setF({ ...f, [k]: v }); setPage(0); };
   const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
-  const nextStatus = target?.status === 'Active' ? 'Inactive' : 'Active';
+  const nextStatus = target?.status === 'Active' ? 'OnLeave' : 'Active';
   const toggle = async () => {
     if (!target) return;
     setBusy(true);
@@ -79,7 +79,7 @@ export default function StudentsPage() {
         actions={<Button variant="outline" size="sm" onClick={exportAll} disabled={exporting || !data?.total}>{exporting ? <Loader2 className="ms-1 h-4 w-4 animate-spin" /> : <Download className="ms-1 h-4 w-4" />}خروجی فهرست</Button>} />
 
       <div className="mb-3 flex flex-wrap gap-2">
-        {[{ v: undefined, label: 'همه' }, ...['Active', 'Inactive', 'Removed'].map((v) => ({ v, label: STUDENT_STATUS[v].label }))].map((s) => {
+        {[{ v: undefined, label: 'همه' }, ...Object.entries(STUDENT_STATUS).map(([v, meta]) => ({ v, label: meta.label }))].map((s) => {
           const n = s.v ? data?.facets.status.find((x) => (x.value || 'Active') === s.v)?.count : undefined;
           return <button key={s.label} onClick={() => setFilter('status', s.v)} className={cn('rounded-full border px-3 py-1 text-sm transition', f.status === s.v ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:border-primary/50')}>{s.label}{n != null && f.status !== s.v ? <span className="num ms-1 opacity-70">{faNum(n)}</span> : null}</button>;
         })}
@@ -132,7 +132,7 @@ export default function StudentsPage() {
       <StudentReportSheet studentId={reportId} onClose={() => setReportId(null)} />
       <Dialog open={!!target} onOpenChange={(o) => !o && !busy && setTarget(null)}>
         <DialogContent dir="rtl">
-          <DialogHeader><DialogTitle>{nextStatus === 'Inactive' ? 'غیرفعال‌سازی دانشجو' : 'فعال‌سازی دانشجو'}</DialogTitle><DialogDescription>{target?.fullName} · {target && faDigits(target.studentNumber)}{target?.status === 'Removed' && ' — این دانشجو در آخرین فایل Excel نبوده است.'}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{nextStatus === 'OnLeave' ? 'غیرفعال‌سازی (مرخصی تحصیلی) دانشجو' : 'فعال‌سازی دانشجو'}</DialogTitle><DialogDescription>{target?.fullName} · {target && faDigits(target.studentNumber)}{target?.status === 'Removed' && ' — این دانشجو در آخرین فایل Excel نبوده است.'}</DialogDescription></DialogHeader>
           <DialogFooter className="gap-2"><Button variant="outline" onClick={() => setTarget(null)} disabled={busy}>انصراف</Button><Button onClick={toggle} disabled={busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}تأیید</Button></DialogFooter>
         </DialogContent>
       </Dialog>

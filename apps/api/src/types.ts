@@ -2,12 +2,15 @@ import type { Logger } from 'pino';
 import type { EmployeeStatus, Permission, StaffRole, StaffStatus, StudentStatus, SubjectType } from '@food/shared';
 import type { AppEnv } from './config/env.js';
 import type { Db, Tx } from './db/client.js';
+import type { PaymentGateway } from './services/payment.service.js';
 
 /** وابستگی‌های مشترک سرویس‌ها. */
 export type ServiceDeps = {
   db: Db;
   env: AppEnv;
   log: Logger;
+  /** فقط برای تست‌های یکپارچه (شبیه‌سازی پاسخ‌های مرزی درگاه بدون شبکهٔ بیرونی). */
+  gatewayOverride?: PaymentGateway | null;
 };
 
 export type Actor =

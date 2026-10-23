@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-security:
+    name: Lint, Typecheck, Audit, Secrets & Unit Tests (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for accidental secrets or external frontend URLs
+        run: npm run secrets:check
+
+      - name: Audit npm dependencies
+        run: npm audit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck all workspaces and scripts
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Build all workspaces (shared + api + web PWA)
+        run: npm run build
+
+  integration-postgres:
+    name: Integration & Concurrency Suite (PostgreSQL ${{ matrix.pg }})
+    runs-on: ubuntu-latest
+    needs: quality-and-security
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ['16', '15']
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg }}-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_postgres_password
+          POSTGRES_DB: food_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d food_ci_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:ci_postgres_password@127.0.0.1:5432/food_ci_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run PostgreSQL integration & RBAC & worker tests
+        run: npm run test:integration
+
+      - name: Run autocannon load & 50-way last-capacity contention test (PG 16)
+        if: matrix.pg == '16'
+        run: npm run build --workspace @food/shared && npm run loadtest
+
+  e2e-playwright:
+    name: Playwright End-to-End (Mobile RTL)
+    runs-on: ubuntu-latest
+    needs: quality-and-security
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_postgres_password
+          POSTGRES_DB: food_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d food_e2e_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:ci_postgres_password@127.0.0.1:5432/food_e2e_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Run Playwright E2E suite
+        run: npm run test:e2e

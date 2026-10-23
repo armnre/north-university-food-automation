@@ -1,7 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  cancelReservationResponseSchema,
   checkoutRequestSchema,
   checkoutResponseSchema,
   createReservationRequestSchema,
@@ -13,19 +12,14 @@ import {
   myReservationsResponseSchema,
   okResponseSchema,
   reissueQrResponseSchema,
-  topupRequestSchema,
-  topupResponseSchema,
+  tehranToday,
   walletResponseSchema,
-  withdrawalCreateRequestSchema,
-  withdrawalDtoSchema,
 } from '@food/shared';
 import { mealSlotLabel } from '@food/shared';
-import { AppError } from '../lib/errors.js';
 import type { CustomerAuth, ServiceDeps } from '../types.js';
 import { queryOfferings } from '../repositories/offering.repo.js';
 import { queryReservations } from '../repositories/reservation.repo.js';
 import {
-  cancelOwnReservation,
   checkoutCart,
   computeCancelDeadline,
   isLiveStatus,
@@ -34,11 +28,10 @@ import {
   reserveMeal,
 } from '../services/reservation.service.js';
 import { getSettings } from '../services/settings.service.js';
-import { createTopup } from '../services/payment.service.js';
-import { createWithdrawal, listWithdrawals, myWallet } from '../services/finance.service.js';
+import { myWallet } from '../services/finance.service.js';
 import { listNotificationsForAccount, markNotificationsRead, unreadCountFor } from '../services/notification.service.js';
 
-/** امور دانشجو/کارمند: منو، رزرو، سبد خرید، لغو، QR، کیف پول، برداشت و اعلان‌ها. */
+/** امور دانشجو/کارمند: منو، رزرو، سبد خرید، QR، اعتبار داخلی کیف پول و اعلان‌ها. */
 export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
   return async (app) => {
     app.addHook('preValidation', app.requireCustomer);
@@ -57,7 +50,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
       async (request) => {
         const auth = request.auth as CustomerAuth;
         const settings = await getSettings(deps);
-        const today = new Date().toISOString().slice(0, 10);
+        const today = tehranToday();
         const from = request.query.from < today ? today : request.query.from;
 
         const offerings = await queryOfferings(deps.db, { from, to: request.query.to, onlyBookable: true });
@@ -76,9 +69,6 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           if (!price) continue;
 
           const myReservation = mine.rows.find((r) => r.offeringId === offering.id && isLiveStatus(r.status));
-          const slotTaken = mine.rows.some(
-            (r) => r.serviceDate === offering.serviceDate && r.mealSlot === offering.mealSlot && isLiveStatus(r.status),
-          );
           const open =
             offering.status === 'Published' &&
             offering.reserveOpensAt.getTime() <= now &&
@@ -98,6 +88,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             foodId: offering.foodId,
             foodName: offering.foodName,
             foodDescription: offering.foodDescription,
+            imagePath: offering.foodImagePath,
             cafeteriaId: offering.cafeteriaId,
             cafeteriaName: offering.cafeteriaName,
             capacity: offering.capacity,
@@ -119,7 +110,6 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             open,
             myReservationId: myReservation?.id ?? null,
             myStatus: myReservation?.status ?? null,
-            slotTaken,
           });
         }
 
@@ -127,7 +117,7 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           today,
           offerings: result,
           policyNote: settings.reservationPolicyNote,
-          settings: { onlinePaymentEnabled: settings.onlinePaymentEnabled, withdrawalEnabled: settings.withdrawalEnabled },
+          settings: { onlinePaymentEnabled: settings.onlinePaymentEnabled },
         };
       },
     );
@@ -182,9 +172,8 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
         const auth = request.auth as CustomerAuth;
         const settings = await getSettings(deps);
         const rows = await listMyReservations(deps, auth);
-        const now = Date.now();
         return {
-          today: new Date().toISOString().slice(0, 10),
+          today: tehranToday(),
           reservations: rows.map((row) => {
             const deadline = computeCancelDeadline(
               { offeringCancelDeadline: row.offeringCancelDeadline, serviceDate: row.serviceDate, slotStartTime: row.slotStartTime },
@@ -203,29 +192,10 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
               cafeteriaName: row.cafeteriaName,
               deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString() : null,
               cancelDeadline: deadline.toISOString(),
-              canCancel: row.status === 'Reserved' && deadline.getTime() > now,
               qrToken: row.status === 'Reserved' ? row.qrToken : null,
-              cancellationPolicyNote: settings.cancellationPolicyNote,
             };
           }),
         };
-      },
-    );
-
-    app.post(
-      '/reservations/:id/cancel',
-      {
-        schema: {
-          params: idParams,
-          response: { 200: cancelReservationResponseSchema },
-          tags: ['me'],
-          summary: 'لغو رزرو در مهلت با بازگشت کامل وجه',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 20), timeWindow: '5 minutes' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        return cancelOwnReservation(deps, { auth, reservationId: (request.params as { id: string }).id, ip: request.clientIp });
       },
     );
 
@@ -249,85 +219,8 @@ export function meRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
 
     app.get(
       '/wallet',
-      { schema: { response: { 200: walletResponseSchema }, tags: ['me'], summary: 'کیف پول: موجودی و تاریخچه' } },
+      { schema: { response: { 200: walletResponseSchema }, tags: ['me'], summary: 'اعتبار داخلی کیف پول: موجودی و تاریخچهٔ تراکنش‌ها' } },
       async (request) => myWallet(deps, request.auth as CustomerAuth),
-    );
-
-    app.post(
-      '/wallet/topup',
-      {
-        schema: {
-          body: topupRequestSchema,
-          response: { 200: topupResponseSchema },
-          tags: ['me'],
-          summary: 'شروع شارژ کیف پول از درگاه پرداخت',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 20), timeWindow: '10 minutes' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const result = await createTopup(deps, {
-          auth,
-          amountRial: request.body.amountRial,
-          returnTo: request.body.returnTo,
-          ip: request.clientIp,
-        });
-        if (!result.enabled) {
-          throw new AppError('PAYMENT_GATEWAY_DISABLED', result.message);
-        }
-        return { paymentId: result.paymentId, redirectUrl: result.redirectUrl, enabled: result.enabled, message: result.message };
-      },
-    );
-
-    app.post(
-      '/withdrawals',
-      {
-        schema: {
-          body: withdrawalCreateRequestSchema,
-          response: { 200: withdrawalDtoSchema },
-          tags: ['me'],
-          summary: 'ثبت درخواست برداشت وجه (مسدودی فوری مبلغ)',
-        },
-        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 10), timeWindow: '1 hour' } },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const created = await createWithdrawal(deps, {
-          auth,
-          amountRial: request.body.amountRial,
-          iban: request.body.iban,
-          ip: request.clientIp,
-        });
-        return {
-          id: created.id,
-          amountRial: created.amountRial,
-          ibanMasked: created.ibanMasked,
-          status: created.status,
-          createdAt: new Date().toISOString(),
-          reviewedAt: null,
-          paidAt: null,
-          reason: null,
-          bankReference: null,
-          holderIdentifier: null,
-          holderName: null,
-        };
-      },
-    );
-
-    app.get(
-      '/withdrawals',
-      {
-        schema: {
-          response: { 200: z.object({ withdrawals: z.array(withdrawalDtoSchema) }) },
-          tags: ['me'],
-          summary: 'درخواست‌های برداشت کاربر جاری',
-        },
-      },
-      async (request) => {
-        const auth = request.auth as CustomerAuth;
-        const rows = await listWithdrawals(deps, { accountId: auth.accountId, limit: 100 });
-        return { withdrawals: rows };
-      },
     );
 
     app.get(

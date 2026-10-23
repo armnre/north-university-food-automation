@@ -1,17 +1,55 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { handleGatewayCallback, sanitizeReturnTo, sandboxRedirectHtml } from '../services/payment.service.js';
+import {
+  checkoutStartRequestSchema,
+  checkoutStartResponseSchema,
+  paymentResultRequestSchema,
+  paymentResultResponseSchema,
+} from '@food/shared';
+import {
+  getPaymentResult,
+  handleGatewayCallback,
+  resolveGateway,
+  sandboxRedirectHtml,
+  startCheckout,
+} from '../services/payment.service.js';
 import { getSettings } from '../services/settings.service.js';
-import type { ServiceDeps } from '../types.js';
+import type { CustomerAuth, ServiceDeps } from '../types.js';
 
 /**
- * درگاه پرداخت.
- *  - `GET /payments/zarinpal/callback` : بازگشت از درگاه (verify سمت سرور، idempotent)
- *  - `GET /payments/sandbox/redirect`  : فقط در محیط غیر production با پرچم sandbox
- *  - `GET /payments/status`            : وضعیت فعال بودن پرداخت برای UI
+ * درگاه پرداخت مستقیم رزرو غذا:
+ *  - `POST /payments/checkout/start`   : شروع تسویهٔ سبد (کسر خودکار اعتبار + رزرو فوری یا انتقال به درگاه)
+ *  - `GET /payments/zarinpal/callback` : بازگشت عمومی از درگاه (verify سمت سرور حتی در Status!=OK، idempotent)
+ *  - `POST /payments/result`           : دریافت رسید کامل پرداخت با کنترل مالکیت حساب
+ *  - `GET /payments/sandbox/redirect`  : درگاه آزمایشی (فقط محیط غیر production)
+ *  - `GET /payments/status`            : وضعیت فعال بودن پرداخت اینترنتی برای UI
  */
 export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
   return async (app) => {
+    app.post(
+      '/checkout/start',
+      {
+        schema: {
+          body: checkoutStartRequestSchema,
+          response: { 200: checkoutStartResponseSchema },
+          tags: ['payments'],
+          summary: 'شروع تسویهٔ سبد رزرو غذا (کسر خودکار اعتبار قبلی + پرداخت مستقیم درگاه)',
+        },
+        preValidation: app.requireCustomer,
+        config: { rateLimit: { max: Math.max(deps.env.RATE_LIMIT_WRITE_MAX, 30), timeWindow: '5 minutes' } },
+      },
+      async (request) => {
+        const auth = request.auth as CustomerAuth;
+        return startCheckout(deps, {
+          auth,
+          items: request.body.items,
+          idempotencyKey: request.body.idempotencyKey,
+          ip: request.clientIp,
+          userAgent: request.headers['user-agent'],
+        });
+      },
+    );
+
     app.get(
       '/zarinpal/callback',
       {
@@ -19,13 +57,13 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           querystring: z.object({
             Authority: z.string().max(200).optional(),
             authority: z.string().max(200).optional(),
-            Status: z.string().max(10).optional(),
-            status: z.string().max(10).optional(),
+            Status: z.string().max(20).optional(),
+            status: z.string().max(20).optional(),
             paymentId: z.string().uuid().optional(),
           }),
-          response: { 200: z.string() },
+          response: { 200: z.string(), 303: z.string() },
           tags: ['payments'],
-          summary: 'بازگشت از درگاه زرین‌پال',
+          summary: 'بازگشت از درگاه زرین‌پال (عمومی، بدون وابستگی به کوکی نشست)',
         },
         config: { rateLimit: false },
       },
@@ -39,17 +77,36 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
           ip: request.clientIp,
         });
 
-        const returnTo = sanitizeReturnTo(result.returnTo);
+        const targetUrl = `/payment/result?paymentId=${encodeURIComponent(result.paymentId)}`;
         const ok = result.status === 'paid';
         const message =
           result.status === 'paid'
-            ? `شارژ کیف پول با موفقیت انجام شد. کد رهگیری: ${result.trackingCode}${result.replay ? ' (این پیام قبلاً هم نمایش داده شده است)' : ''}`
+            ? result.failed === 0
+              ? `پرداخت و رزرو ${result.succeeded} وعده با موفقیت انجام شد. کد رهگیری: ${result.trackingCode}`
+              : `پرداخت تأیید شد (${result.trackingCode})؛ ${result.succeeded} وعده رزرو شد و بابت ${result.failed} آیتم ناموفق اعتبار به کیف پول منتقل گردید.`
             : result.status === 'needs_review'
-              ? 'پرداخت شما در حال بررسی است. در صورت عدم شارژ، با امور مالی تماس بگیرید.'
-              : 'پرداخت ناموفق بود یا تکمیل نشد؛ مبلغی از حساب شما کسر نشده است.';
+              ? result.message
+              : result.message;
 
-        void reply.type('text/html; charset=utf-8');
-        return callbackHtml({ ok, message, returnTo });
+        void reply.status(303).header('location', targetUrl).type('text/html; charset=utf-8');
+        return callbackHtml({ ok, status: result.status, message, returnTo: targetUrl });
+      },
+    );
+
+    app.post(
+      '/result',
+      {
+        schema: {
+          body: paymentResultRequestSchema,
+          response: { 200: paymentResultResponseSchema },
+          tags: ['payments'],
+          summary: 'دریافت رسید و نتیجهٔ پرداخت کاربر جاری',
+        },
+        preValidation: app.requireCustomer,
+      },
+      async (request) => {
+        const auth = request.auth as CustomerAuth;
+        return getPaymentResult(deps, { auth, paymentId: request.body.paymentId });
       },
     );
 
@@ -78,8 +135,7 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
             200: z.object({
               enabled: z.boolean(),
               gateway: z.string(),
-              minTopupRial: z.number().int(),
-              maxTopupRial: z.number().int(),
+              minPayableRial: z.number().int(),
               message: z.string(),
             }),
           },
@@ -90,37 +146,36 @@ export function paymentRoutes(deps: ServiceDeps): FastifyPluginAsyncZod {
       },
       async () => {
         const settings = await getSettings(deps);
-        const merchantConfigured = Boolean(deps.env.ZARINPAL_MERCHANT_ID);
-        const sandbox = !merchantConfigured && deps.env.ALLOW_SANDBOX_GATEWAY && deps.env.NODE_ENV !== 'production';
-        const enabled = settings.onlinePaymentEnabled && (merchantConfigured || sandbox);
+        const gateway = settings.onlinePaymentEnabled ? resolveGateway(deps) : null;
+        const enabled = Boolean(gateway);
         return {
           enabled,
-          gateway: merchantConfigured ? 'zarinpal' : sandbox ? 'sandbox' : 'none',
-          minTopupRial: settings.minTopupRial,
-          maxTopupRial: settings.maxTopupRial,
-          message: enabled ? 'پرداخت اینترنتی فعال است.' : 'پرداخت اینترنتی فعال نیست؛ شارژ کیف پول توسط امور مالی انجام می‌شود.',
+          gateway: gateway ? gateway.name : 'none',
+          minPayableRial: Math.max(settings.minGatewayPayableRial, 10_000),
+          message: enabled ? 'پرداخت مستقیم از درگاه بانکی فعال است.' : 'درگاه پرداخت اینترنتی در حال حاضر فعال نیست.',
         };
       },
     );
   };
 }
 
-/** صفحهٔ بازگشت از درگاه: بدون script (سازگار با CSP سخت‌گیرانه) و با ریدایرکت داخلی. */
-function callbackHtml(input: { ok: boolean; message: string; returnTo: string }): string {
+/** صفحهٔ بازگشت از درگاه: بدون script (سازگار با CSP سخت‌گیرانه) به همراه هدایت فوری ۳۰۳. */
+function callbackHtml(input: { ok: boolean; status: 'paid' | 'failed' | 'needs_review'; message: string; returnTo: string }): string {
   const safeMessage = escapeHtml(input.message);
   const safeReturn = escapeHtml(input.returnTo);
+  const title = input.ok ? 'پرداخت موفق' : input.status === 'needs_review' ? 'در حال بررسی پرداخت' : 'پرداخت ناموفق';
   return `<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="4;url=${safeReturn}">
-<title>نتیجهٔ پرداخت</title>
+<meta http-equiv="refresh" content="1;url=${safeReturn}">
+<title>${title}</title>
 </head>
 <body>
-<h1>${input.ok ? 'پرداخت موفق' : 'پرداخت ناموفق / در حال بررسی'}</h1>
+<h1>${title}</h1>
 <p>${safeMessage}</p>
-<p><a href="${safeReturn}">بازگشت به سامانه</a></p>
+<p><a href="${safeReturn}">مشاهدهٔ رسید پرداخت</a></p>
 </body>
 </html>`;
 }

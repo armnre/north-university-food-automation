@@ -153,29 +153,38 @@ describe('رزرو', () => {
     await assertLedgerInvariants();
   });
 
-  it('دو رزرو برای یک وعده در یک روز ⇒ «قبلاً رزرو کرده‌اید» (ایندکس یکتای جزئی)', async () => {
+  it('دو غذای مختلف در ناهار یک روز با یک حساب ⇒ هر دو موفق؛ رزرو دوبارهٔ همان غذا ⇒ خطای DUPLICATE_OFFERING', async () => {
     const student = await createStudent(db, { balanceRial: 1_000_000 });
-    const offering = await openOffering({ capacity: 10, price: 100_000 });
-    const client = await loginStudentClient(student);
-
-    expect((await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) })).status).toBe(200);
-
-    // وعدهٔ دیگر در همان روز و همان وعدهٔ غذایی
+    const first = await openOffering({ capacity: 10, price: 100_000 });
     const second = await createOffering(db, {
       serviceDate: tomorrow(),
       mealSlot: 'Lunch',
       capacity: 10,
       foodId: await createFood(db, 'غذای دوم'),
-      prices: { Student: 100_000 },
+      prices: { Student: 150_000 },
       reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
     });
-    const response = await client.post('/api/v1/me/reservations', { offeringId: second.id, idempotencyKey: randomHex(8) });
-    expect(response.status).toBe(409);
-    expect((response.body as { error: { code: string; message: string } }).error.code).toBe('DUPLICATE_SLOT');
-    expect((response.body as { error: { message: string } }).error.message).toContain('قبلاً رزرو کرده‌اید');
+    const client = await loginStudentClient(student);
 
-    const [row] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [second.id]);
-    expect(row?.reserved_count).toBe(0);
+    const res1 = await client.post('/api/v1/me/reservations', { offeringId: first.id, idempotencyKey: randomHex(8) });
+    expect(res1.status).toBe(200);
+
+    // غذای دوم در همان روز و همان وعدهٔ ناهار ⇒ موفق
+    const res2 = await client.post('/api/v1/me/reservations', { offeringId: second.id, idempotencyKey: randomHex(8) });
+    expect(res2.status).toBe(200);
+    expect((res2.body as { code: string }).code).not.toBe((res1.body as { code: string }).code);
+    expect((res2.body as { balanceRial: number }).balanceRial).toBe(750_000);
+
+    // رزرو دوبارهٔ همان غذای اول ⇒ ۴۰۹ DUPLICATE_OFFERING
+    const dup = await client.post('/api/v1/me/reservations', { offeringId: first.id, idempotencyKey: randomHex(8) });
+    expect(dup.status).toBe(409);
+    expect((dup.body as { error: { code: string; message: string } }).error.code).toBe('DUPLICATE_OFFERING');
+    expect((dup.body as { error: { message: string } }).error.message).toContain('این غذا را قبلاً رزرو کرده‌اید');
+
+    const [row1] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [first.id]);
+    const [row2] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [second.id]);
+    expect(row1?.reserved_count).toBe(1);
+    expect(row2?.reserved_count).toBe(1);
     await assertLedgerInvariants();
   });
 
@@ -342,94 +351,140 @@ describe('رزرو', () => {
 });
 
 describe('لغو و بازپرداخت', () => {
-  it('لغو در مهلت ⇒ بازگشت کامل وجه و کاهش reserved_count', async () => {
+  it('در نسخهٔ اول لغو توسط دانشجو غیرفعال است (مسیر HTTP حذف شده و سرویس با ۴۰۳ مسدود می‌کند)', async () => {
     const student = await createStudent(db, { balanceRial: 500_000 });
     const offering = await openOffering({ price: 100_000 });
     const client = await loginStudentClient(student);
     const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
     const reservationId = (created.body as { reservationId: string }).reservationId;
 
-    const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancel.status).toBe(200);
-    const body = cancel.body as { status: string; refundedRial: number; balanceRial: number };
-    expect(body.status).toBe('Cancelled');
-    expect(body.refundedRial).toBe(100_000);
-    expect(body.balanceRial).toBe(500_000);
+    // مسیر لغو دانشجو از API حذف شده است
+    const removedRoute = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
+    expect(removedRoute.status).toBe(404);
 
-    const [row] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [offering.id]);
-    expect(row?.reserved_count).toBe(0);
+    // تلاش دانشجو برای فراخوانی مسیر لغو اداری ⇒ ۴۰۳
+    const adminRouteAttempt = await client.post(`/api/v1/reservations/${reservationId}/cancel`, { reason: 'تلاش لغو توسط دانشجو' });
+    expect(adminRouteAttempt.status).toBe(403);
+
+    // فراخوانی مستقیم سرویس وقتی studentCancellationEnabled=false است ⇒ ۴۰۳ با پیام روشن
+    const { cancelOwnReservation } = await import('../../src/services/reservation.service.js');
+    const { AppError } = await import('../../src/lib/errors.js');
+    await expect(
+      cancelOwnReservation(
+        { db, env: ctx.env, log: ctx.log },
+        {
+          auth: {
+            kind: 'student',
+            sessionId: randomHex(8),
+            studentId: student.studentId,
+            accountId: student.accountId,
+            studentNumber: student.studentNumber,
+            fullName: 'دانشجو',
+            customerGroup: 'Student',
+          },
+          reservationId,
+          ip: '127.0.0.1',
+        },
+      ),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 403 && err.message.includes('فعال نیست'));
+
+    const [row] = await query<{ status: string }>(db, `SELECT status FROM reservations WHERE id = $1`, [reservationId]);
+    expect(row?.status).toBe('Reserved');
     await assertLedgerInvariants();
   });
 
-  it('لغو پس از مهلت رد می‌شود و پیام زمان دقیق شمسی دارد', async () => {
+  it('زیرساخت لغو دانشجو (وقتی student_cancellation_enabled=true شود): بازپرداخت، مهلت شمسی، IDOR و جلوگیری پس از تحویل', async () => {
+    const { cancelOwnReservation } = await import('../../src/services/reservation.service.js');
+    const { invalidateSettingsCacheForDb } = await import('../../src/services/settings.service.js');
+    const { AppError } = await import('../../src/lib/errors.js');
+
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value) VALUES ('student_cancellation_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+    );
+    invalidateSettingsCacheForDb(db);
+
     const student = await createStudent(db, { balanceRial: 500_000 });
-    // مهلت لغو: ۲ ساعت پیش
+    const other = await createStudent(db, { balanceRial: 500_000 });
+    const authOf = (s: typeof student) => ({
+      kind: 'student' as const,
+      sessionId: randomHex(8),
+      studentId: s.studentId,
+      accountId: s.accountId,
+      studentNumber: s.studentNumber,
+      fullName: 'دانشجو',
+      customerGroup: 'Student' as const,
+    });
+
+    // ۱) لغو در مهلت ⇒ بازگشت کامل وجه، ثبت cancelledAt/cancelledBy/cancelReason و کاهش reserved_count
     const offering = await createOffering(db, {
       serviceDate: tomorrow(),
       prices: { Student: 100_000 },
       reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      cancelDeadline: new Date(Date.now() + 4 * 3_600_000),
+    });
+    const client = await loginStudentClient(student);
+    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
+    const reservationId = (created.body as { reservationId: string }).reservationId;
+
+    const cancelled = await cancelOwnReservation(
+      { db, env: ctx.env, log: ctx.log },
+      { auth: authOf(student), reservationId, ip: '127.0.0.1' },
+    );
+    expect(cancelled.status).toBe('Cancelled');
+    expect(cancelled.refundedRial).toBe(100_000);
+    expect(cancelled.balanceRial).toBe(500_000);
+
+    const [resMeta] = await query<{ cancelled_by: string | null; cancel_reason: string | null; cancelled_at: Date | null }>(
+      db,
+      `SELECT cancelled_by, cancel_reason, cancelled_at FROM reservations WHERE id = $1`,
+      [reservationId],
+    );
+    expect(resMeta?.cancelled_by).toBe(student.studentId);
+    expect(resMeta?.cancel_reason).toBeTruthy();
+    expect(resMeta?.cancelled_at).toBeTruthy();
+
+    const [offRow] = await query<{ reserved_count: number }>(db, `SELECT reserved_count FROM meal_offerings WHERE id = $1`, [offering.id]);
+    expect(offRow?.reserved_count).toBe(0);
+
+    // ۲) لغو پس از مهلت ⇒ DEADLINE_PASSED با زمان دقیق شمسی
+    const expiredCancelOffering = await createOffering(db, {
+      serviceDate: tomorrow(),
+      foodId: await createFood(db, 'غذای مهلت‌گذشته'),
+      prices: { Student: 100_000 },
+      reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
       cancelDeadline: new Date(Date.now() - 2 * 3_600_000),
     });
-    const client = await loginStudentClient(student);
-    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    const reservationId = (created.body as { reservationId: string }).reservationId;
+    const created2 = await client.post('/api/v1/me/reservations', { offeringId: expiredCancelOffering.id, idempotencyKey: randomHex(8) });
+    const resId2 = (created2.body as { reservationId: string }).reservationId;
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(student), reservationId: resId2, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy(
+      (err: unknown) =>
+        err instanceof AppError &&
+        err.code === 'DEADLINE_PASSED' &&
+        err.message.includes('مهلت لغو') &&
+        Boolean((err.details as { deadlineFa?: string } | undefined)?.deadlineFa),
+    );
 
-    const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancel.status).toBe(409);
-    const error = (cancel.body as { error: { code: string; message: string; details?: { deadlineFa?: string } } }).error;
-    expect(error.code).toBe('DEADLINE_PASSED');
-    expect(error.message).toContain('مهلت لغو');
-    expect(error.details?.deadlineFa).toBeTruthy();
+    // ۳) IDOR و جلوگیری پس از تحویل
+    const delivOffering = await createDeliverableOffering(db, { capacity: 5, price: 100_000 });
+    const created3 = await client.post('/api/v1/me/reservations', { offeringId: delivOffering.id, idempotencyKey: randomHex(8) });
+    const resId3 = (created3.body as { reservationId: string }).reservationId;
 
-    const [row] = await query<{ status: string }>(db, `SELECT status FROM reservations WHERE id = $1`, [reservationId]);
-    expect(row?.status).toBe('Reserved');
-  });
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(other), reservationId: resId3, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 404);
 
-  it('مرز مهلت: دقیقاً قبل از مهلت مجاز و بعد از آن ممنوع (cancel_cutoff_hours)', async () => {
-    const student = await createStudent(db, { balanceRial: 500_000 });
-    // وعده‌ای که شروع آن ۲۰ ساعت دیگر است؛ cancel_cutoff_hours=12 ⇒ مهلت = ۸ ساعت دیگر
-    const serviceDate = tomorrow();
-    const startHour = String(new Date(Date.now() + 20 * 3_600_000).getUTCHours()).padStart(2, '0');
-    const offering = await createOffering(db, {
-      serviceDate,
-      prices: { Student: 100_000 },
-      reserveDeadline: tehranDateTimeToUtc(serviceDate, `${startHour}:00`),
-      cancelDeadline: null,
-    });
-    void startHour;
-    const client = await loginStudentClient(student);
-    const created = await client.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    if (created.status === 200) {
-      const reservationId = (created.body as { reservationId: string }).reservationId;
-      const cancel = await client.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-      // اگر هنوز بیشتر از ۱۲ ساعت تا شروع وعده مانده باشد ⇒ لغو مجاز است
-      expect([200, 409]).toContain(cancel.status);
-    }
-    await assertLedgerInvariants();
-  });
-
-  it('لغو رزرو تحویل‌شده ممکن نیست و لغو رزرو دیگران (IDOR) رد می‌شود', async () => {
-    const first = await createStudent(db, { balanceRial: 500_000 });
-    const second = await createStudent(db, { balanceRial: 500_000 });
-    const offering = await createDeliverableOffering(db, { capacity: 5, price: 100_000 });
-
-    const clientA = await loginStudentClient(first);
-    const created = await clientA.post('/api/v1/me/reservations', { offeringId: offering.id, idempotencyKey: randomHex(8) });
-    const reservationId = (created.body as { reservationId: string }).reservationId;
-
-    const clientB = await loginStudentClient(second);
-    const idor = await clientB.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(idor.status).toBe(404); // وجود رزرو لو نمی‌رود
-
-    // تحویل توسط اپراتور
-    const operator = await createStaff(db, { role: 'Operator', cafeteriaId: offering.cafeteriaId });
-    const [qr] = await query<{ qr_token: string }>(db, `SELECT qr_token FROM reservations WHERE id = $1`, [reservationId]);
+    const operator = await createStaff(db, { role: 'Operator', cafeteriaId: delivOffering.cafeteriaId });
+    const [qr] = await query<{ qr_token: string }>(db, `SELECT qr_token FROM reservations WHERE id = $1`, [resId3]);
     const opClient = await loginStaff(ctx.app, operator.username, operator.password);
     const delivered = await opClient.post('/api/v1/delivery/confirm', { qrToken: qr!.qr_token });
     expect((delivered.body as { state: string }).state).toBe('delivered');
 
-    const cancelAfterDelivery = await clientA.post(`/api/v1/me/reservations/${reservationId}/cancel`);
-    expect(cancelAfterDelivery.status).toBe(409);
+    await expect(
+      cancelOwnReservation({ db, env: ctx.env, log: ctx.log }, { auth: authOf(student), reservationId: resId3, ip: '127.0.0.1' }),
+    ).rejects.toSatisfy((err: unknown) => err instanceof AppError && err.status === 409);
+
     await assertLedgerInvariants();
   });
 
@@ -801,181 +856,381 @@ describe('مالی و دفتر کل', () => {
     await appClient.end();
   });
 
-  it('پرداخت آنلاین وقتی غیرفعال است ⇒ راهنمای شارژ دستی، بدون ثبت اعتبار', async () => {
-    const student = await createStudent(db);
+  it('شارژ مستقیم کیف پول و برداشت شبا حذف شده‌اند و DATA_ENCRYPTION_KEY اختیاری است', async () => {
+    const student = await createStudent(db, { balanceRial: 250_000 });
     const client = await loginStudentClient(student);
-    const response = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
-    expect(response.status).toBe(409);
-    expect((response.body as { error: { code: string; message: string } }).error.code).toBe('PAYMENT_GATEWAY_DISABLED');
-    const credits = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM ledger_transactions WHERE type = 'OnlinePayment'`);
-    expect(credits[0]?.n).toBe(0);
+
+    // مسیرهای شارژ مستقیم کیف پول و برداشت بانکی حذف شده‌اند
+    const topupRemoved = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
+    expect(topupRemoved.status).toBe(404);
+
+    const withdrawRemoved = await client.post('/api/v1/me/withdrawals', { amountRial: 100_000, iban: 'IR820540102680020817909002' });
+    expect(withdrawRemoved.status).toBe(404);
+
+    const finance = await createStaff(db, { role: 'Finance' });
+    const finClient = await loginStaff(ctx.app, finance.username, finance.password);
+    const finWithdrawalsRemoved = await finClient.get('/api/v1/finance/withdrawals');
+    expect(finWithdrawalsRemoved.status).toBe(404);
+
+    // کیف پول داخلی فقط موجودی اعتبار بازگشتی و گردش دفتر کل را برمی‌گرداند
+    const wallet = await client.get<{ balanceRial: number; transactions: unknown[] }>('/api/v1/me/wallet');
+    expect(wallet.status).toBe(200);
+    expect((wallet.body as { balanceRial: number }).balanceRial).toBe(250_000);
+    expect('withdrawalEnabled' in (wallet.body as Record<string, unknown>)).toBe(false);
+    expect('minTopupRial' in (wallet.body as Record<string, unknown>)).toBe(false);
+
+    // DATA_ENCRYPTION_KEY در تنظیمات محیطی اختیاری است
+    const { readEnv, testEnv } = await import('../../src/config/env.js');
+    const envWithoutEnc = testEnv({ DATA_ENCRYPTION_KEY: '' });
+    const parsed = readEnv(envWithoutEnc);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.env.DATA_ENCRYPTION_KEY).toBeUndefined();
+
+    // جلوگیری از open redirect در مسیر بازگشت
+    const { sanitizeReturnTo } = await import('../../src/services/payment.service.js');
+    expect(sanitizeReturnTo('https://evil.example.com/x')).toBe('/wallet');
+    expect(sanitizeReturnTo('//evil.example.com')).toBe('/wallet');
+    expect(sanitizeReturnTo('/reservations')).toBe('/reservations');
+
     await assertLedgerInvariants();
   });
 
-  it('درگاه sandbox: callback تکراری و هم‌زمان فقط یک واریز ثبت می‌کند', async () => {
+  it('پرداخت مستقیم درگاه غیرفعال ⇒ checkout/start خطای PAYMENT_GATEWAY_DISABLED می‌دهد؛ ولی با اعتبار کامل بدون درگاه رزرو می‌شود', async () => {
+    const offering1 = await openOffering({ price: 50_000 });
+    const offering2 = await createOffering(db, {
+      serviceDate: tomorrow(),
+      foodId: await createFood(db, 'خوراک جوجه'),
+      prices: { Student: 60_000 },
+      reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+    });
+
+    // ۱) دانشجو بدون اعتبار و درگاه خاموش ⇒ ۴۰۹ بدون رزرو و بدون اعتبار رایگان
+    const studentNoCredit = await createStudent(db, { balanceRial: 0 });
+    const clientNoCredit = await loginStudentClient(studentNoCredit);
+    const blocked = await clientNoCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }],
+      idempotencyKey: randomHex(8),
+    });
+    expect(blocked.status).toBe(409);
+    expect((blocked.body as { error: { code: string } }).error.code).toBe('PAYMENT_GATEWAY_DISABLED');
+
+    // ۲) دانشجو با اعتبار بازگشتی کافی (payable = 0) ⇒ رزرو فوری و اتمیک حتی وقتی درگاه خاموش است
+    const studentWithCredit = await createStudent(db, { balanceRial: 150_000 });
+    const clientWithCredit = await loginStudentClient(studentWithCredit);
+    const idem = randomHex(8);
+    const instant = await clientWithCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }, { offeringId: offering2.id }],
+      idempotencyKey: idem,
+    });
+    expect(instant.status).toBe(200);
+    const body = instant.body as {
+      mode: string;
+      payableRial: number;
+      creditUsedRial: number;
+      balanceRial: number;
+      items: { ok: boolean; code: string | null }[];
+    };
+    expect(body.mode).toBe('instant');
+    expect(body.payableRial).toBe(0);
+    expect(body.creditUsedRial).toBe(110_000);
+    expect(body.balanceRial).toBe(40_000);
+    expect(body.items).toHaveLength(2);
+    expect(body.items.every((i) => i.ok && i.code)).toBe(true);
+
+    // بازپخش همان کلید idempotency ⇒ بدون کسر مجدد
+    const replay = await clientWithCredit.post('/api/v1/payments/checkout/start', {
+      items: [{ offeringId: offering1.id }, { offeringId: offering2.id }],
+      idempotencyKey: idem,
+    });
+    expect(replay.status).toBe(200);
+    expect((replay.body as { replay: boolean; balanceRial: number }).replay).toBe(true);
+    expect((replay.body as { balanceRial: number }).balanceRial).toBe(40_000);
+
+    await assertLedgerInvariants();
+  });
+
+  it('پرداخت مستقیم درگاه: کسر خودکار اعتبار جزئی، حداقل ۱۰٬۰۰۰ ریال شاپرک، callback هم‌زمان و رسید مالکیت‌دار', async () => {
     const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
     try {
       await db.execute(
         sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
       );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
 
-      const topup = await client.post('/api/v1/me/wallet/topup', { amountRial: 1_000_000, returnTo: '/wallet' });
-      expect(topup.status).toBe(200);
-      const paymentId = (topup.body as { paymentId: string }).paymentId;
-      expect((topup.body as { enabled: boolean }).enabled).toBe(true);
+      // الف) اعتبار ۴۵٬۰۰۰ ریال برای غذای ۵۰٬۰۰۰ ریالی ⇒ مابه‌التفاوت ۵٬۰۰۰ < ۱۰٬۰۰۰ ⇒ پرداخت درگاه ۱۰٬۰۰۰ و ماندن ۵٬۰۰۰ ریال در کیف پول
+      const offeringA = await openOffering({ price: 50_000 });
+      const studentMinEdge = await createStudent(db, { balanceRial: 45_000 });
+      const clientMin = createTestClient(sandboxApp.app);
+      await primeCsrf(clientMin);
+      await clientMin.post('/api/v1/auth/student/login', {
+        studentNumber: studentMinEdge.studentNumber,
+        nationalId: studentMinEdge.nationalId,
+      });
 
-      const callbackUrl = `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=OK`;
-      // سه callback هم‌زمان
-      const results = await Promise.all([
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
-        createTestClient(sandboxApp.app).raw('GET', callbackUrl),
+      const startMin = await clientMin.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offeringA.id }],
+        idempotencyKey: randomHex(8),
+      });
+      expect(startMin.status).toBe(200);
+      const minBody = startMin.body as {
+        mode: string;
+        paymentId: string;
+        payableRial: number;
+        creditUsedRial: number;
+        creditRemainingNote: string | null;
+      };
+      expect(minBody.mode).toBe('gateway');
+      expect(minBody.payableRial).toBe(10_000);
+      expect(minBody.creditUsedRial).toBe(40_000);
+      expect(minBody.creditRemainingNote).toBeTruthy();
+
+      // سه callback هم‌زمان بدون کوکی نشست (عمومی)
+      const cbUrl = `/api/v1/payments/zarinpal/callback?paymentId=${minBody.paymentId}&Status=OK`;
+      const cbRes = await Promise.all([
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
+        createTestClient(sandboxApp.app).raw('GET', cbUrl),
       ]);
-      expect(results.every((r) => r.status === 200)).toBe(true);
+      expect(cbRes.every((r) => r.status === 303)).toBe(true);
 
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(1_000_000);
+      // دقیقاً یک تراکنش OnlinePayment و یک رزرو ثبت شده و ۵٬۰۰۰ ریال اعتبار دست‌نخورده باقی مانده است
+      const resResult = await clientMin.post('/api/v1/payments/result', { paymentId: minBody.paymentId });
+      expect(resResult.status).toBe(200);
+      const receipt = resResult.body as {
+        status: string;
+        amountRial: number;
+        creditUsedRial: number;
+        refundedToWalletRial: number;
+        balanceRial: number;
+        items: { ok: boolean; code: string | null }[];
+      };
+      expect(receipt.status).toBe('Paid');
+      expect(receipt.amountRial).toBe(10_000);
+      expect(receipt.creditUsedRial).toBe(40_000);
+      expect(receipt.refundedToWalletRial).toBe(0);
+      expect(receipt.balanceRial).toBe(5_000);
+      expect(receipt.items).toHaveLength(1);
+      expect(receipt.items[0]?.ok).toBe(true);
 
-      const payments = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM ledger_transactions WHERE type = 'OnlinePayment'`);
-      expect(payments[0]?.n).toBe(1);
+      // دانشجوی دیگر به رسید دسترسی ندارد (IDOR ⇒ ۴۰۴)
+      const stranger = await createStudent(db);
+      const strangerClient = createTestClient(sandboxApp.app);
+      await primeCsrf(strangerClient);
+      await strangerClient.post('/api/v1/auth/student/login', {
+        studentNumber: stranger.studentNumber,
+        nationalId: stranger.nationalId,
+      });
+      const idor = await strangerClient.post('/api/v1/payments/result', { paymentId: minBody.paymentId });
+      expect(idor.status).toBe(404);
+
       await assertLedgerInvariants();
     } finally {
       await sandboxApp.close();
     }
   });
 
-  it('callback با وضعیت ناموفق ⇒ پرداخت Failed و بدون واریز', async () => {
+  it('تکمیل ظرفیت یکی از آیتم‌ها حین حضور در درگاه ⇒ رزرو آیتم سالم + انتقال دقیق مابقی به اعتبار کیف پول', async () => {
     const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
     try {
       await db.execute(
         sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
       );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
-      const topup = await client.post('/api/v1/me/wallet/topup', { amountRial: 500_000, returnTo: '/wallet' });
-      const paymentId = (topup.body as { paymentId: string }).paymentId;
 
-      const failed = await createTestClient(sandboxApp.app).raw(
-        'GET',
-        `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=NOK`,
-      );
-      expect(failed.status).toBe(200);
-      expect(failed.raw).toContain('ناموفق');
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(0);
-      const rows = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [paymentId]);
-      expect(rows[0]?.status).toBe('Failed');
-    } finally {
-      await sandboxApp.close();
-    }
-  });
+      const itemAvailable = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'قورمه‌سبزی'),
+        capacity: 5,
+        prices: { Student: 50_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+      const itemLastSpot = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'کباب بختیاری'),
+        capacity: 1,
+        prices: { Student: 60_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
 
-  it('بازگشت به مسیر بیرونی در returnTo رد می‌شود (open redirect)', async () => {
-    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
-    try {
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
-      const student = await createStudent(db);
-      const client = createTestClient(sandboxApp.app);
-      await primeCsrf(client);
-      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
-      const response = await client.post('/api/v1/me/wallet/topup', { amountRial: 200_000, returnTo: 'https://evil.example.com/x' });
-      expect(response.status).toBe(400);
-    } finally {
-      await sandboxApp.close();
-    }
-  });
+      const studentA = await createStudent(db, { balanceRial: 0 });
+      const studentB = await createStudent(db, { balanceRial: 100_000 });
 
-  it('برداشت وجه: مسدودی، تأیید، پرداخت و رد هم‌زمان', async () => {
-    const app = await buildTestApp();
-    try {
-      const student = await createStudent(db, { balanceRial: 1_000_000 });
-      // فعال‌سازی برداشت
-      await db.execute(
-        sql`INSERT INTO system_settings (key, value) VALUES ('withdrawal_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-      );
+      const clientA = createTestClient(sandboxApp.app);
+      await primeCsrf(clientA);
+      await clientA.post('/api/v1/auth/student/login', { studentNumber: studentA.studentNumber, nationalId: studentA.nationalId });
 
-      const client = await loginStudentClient(student);
-      const created = await client.post('/api/v1/me/withdrawals', { amountRial: 400_000, iban: 'IR820540102680020817909002' });
-      expect(created.status).toBe(200);
-      const withdrawalId = (created.body as { id: string }).id;
+      // دانشجوی الف پرداخت هر دو آیتم (۱۱۰٬۰۰۰ ریال) را شروع می‌کند
+      const started = await clientA.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: itemAvailable.id }, { offeringId: itemLastSpot.id }],
+        idempotencyKey: randomHex(8),
+      });
+      expect(started.status).toBe(200);
+      const paymentId = (started.body as { paymentId: string }).paymentId;
 
-      const [account] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      expect(Number(account?.balance_rial)).toBe(600_000); // مبلغ مسدود شد
+      // در حالی که دانشجوی الف در صفحهٔ بانک است، دانشجوی ب آخرین ظرفیت آیتم دوم را می‌گیرد!
+      const clientB = createTestClient(sandboxApp.app);
+      await primeCsrf(clientB);
+      await clientB.post('/api/v1/auth/student/login', { studentNumber: studentB.studentNumber, nationalId: studentB.nationalId });
+      const sniped = await clientB.post('/api/v1/me/reservations', { offeringId: itemLastSpot.id, idempotencyKey: randomHex(8) });
+      expect(sniped.status).toBe(200);
+
+      // بازگشت موفق دانشجوی الف از درگاه
+      const cb = await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${paymentId}&Status=OK`);
+      expect(cb.status).toBe(303);
+
+      const res = await clientA.post('/api/v1/payments/result', { paymentId });
+      expect(res.status).toBe(200);
+      const receipt = res.body as {
+        status: string;
+        refundedToWalletRial: number;
+        balanceRial: number;
+        items: { offeringId: string; ok: boolean; errorCode: string | null }[];
+      };
+      expect(receipt.status).toBe('Paid');
+      expect(receipt.refundedToWalletRial).toBe(60_000);
+      expect(receipt.balanceRial).toBe(60_000);
+      expect(receipt.items.find((i) => i.offeringId === itemAvailable.id)?.ok).toBe(true);
+      expect(receipt.items.find((i) => i.offeringId === itemLastSpot.id)?.ok).toBe(false);
+      expect(receipt.items.find((i) => i.offeringId === itemLastSpot.id)?.errorCode).toBe('CAPACITY_FULL');
+
       await assertLedgerInvariants();
+    } finally {
+      await sandboxApp.close();
+    }
+  });
 
+  it('لبهٔ درگاه: استعلام verify حتی در Status=NOK، مغایرت مبلغ، خطای داخلی پس از verify (NeedsReview + هشدار مالی) و آشتی‌سازی', async () => {
+    const sandboxApp = await buildTestApp({ ONLINE_PAYMENT_ENABLED: 'true', ALLOW_SANDBOX_GATEWAY: 'true' });
+    try {
+      await db.execute(
+        sql`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
+      );
       const finance = await createStaff(db, { role: 'Finance' });
-      const finClient = await loginStaff(app.app, finance.username, finance.password);
+      const superAdmin = await createStaff(db, { role: 'SuperAdmin' });
 
-      // تأیید هم‌زمان از دو نشست ⇒ فقط یکی موفق
-      const finClient2 = await loginStaff(app.app, finance.username, finance.password);
-      const approvals = await Promise.all([
-        finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, { action: 'approve' }),
-        finClient2.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, { action: 'approve' }),
+      const offering = await openOffering({ capacity: 10, price: 80_000 });
+      const student = await createStudent(db, { balanceRial: 0 });
+      const client = createTestClient(sandboxApp.app);
+      await primeCsrf(client);
+      await client.post('/api/v1/auth/student/login', { studentNumber: student.studentNumber, nationalId: student.nationalId });
+
+      let verifyCalls = 0;
+      let verifyMode: 'fail' | 'ok' | 'mismatch' = 'fail';
+      sandboxApp.app.deps.gatewayOverride = {
+        name: 'sandbox',
+        async request({ amountRial }) {
+          const authority = `custom_${randomHex(8)}`;
+          return { redirectUrl: `/api/v1/payments/sandbox/redirect?authority=${authority}&amount=${amountRial}`, authority };
+        },
+        async verify({ amountRial }) {
+          verifyCalls += 1;
+          if (verifyMode === 'fail') return { ok: false, code: -51, message: 'لغو توسط کاربر' };
+          if (verifyMode === 'mismatch') return { ok: true, code: 100, refId: 'REF-MISMATCH', amountRial: amountRial - 1_000 };
+          return { ok: true, code: 100, refId: 'REF-PAID-100', amountRial };
+        },
+      };
+
+      // ۱) Status=NOK واقعی: verify فراخوانی می‌شود و پرداخت Failed می‌گردد
+      const p1 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid1 = (p1.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid1}&Status=NOK`);
+      expect(verifyCalls).toBe(1);
+      const [row1] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid1]);
+      expect(row1?.status).toBe('Failed');
+
+      // ۲) Status=NOK دستکاری‌شده ولی درگاه واقعاً تأیید می‌کند (code=100) ⇒ پرداخت Paid و رزرو ثبت می‌شود!
+      verifyMode = 'ok';
+      const p2 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid2 = (p2.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid2}&Status=NOK`);
+      expect(verifyCalls).toBe(2);
+      const [row2] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid2]);
+      expect(row2?.status).toBe('Paid');
+
+      // ۳) مغایرت مبلغ درگاه ⇒ NeedsReview + اعلان هشدار برای Finance و SuperAdmin
+      const offering2 = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'خورش قیمه'),
+        prices: { Student: 70_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
+      });
+      verifyMode = 'mismatch';
+      const p3 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering2.id }],
+        idempotencyKey: randomHex(8),
+      });
+      const pid3 = (p3.body as { paymentId: string }).paymentId;
+      await createTestClient(sandboxApp.app).raw('GET', `/api/v1/payments/zarinpal/callback?paymentId=${pid3}&Status=OK`);
+      const [row3] = await query<{ status: string; last_error: string }>(db, `SELECT status, last_error FROM payments WHERE id = $1`, [
+        pid3,
       ]);
-      const okCount = approvals.filter((r) => r.status === 200).length;
-      expect(okCount).toBe(1);
-      expect(approvals.filter((r) => r.status === 409).length).toBe(1);
+      expect(row3?.status).toBe('NeedsReview');
+      expect(row3?.last_error).toBe('amount_mismatch');
 
-      const paid = await finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, {
-        action: 'markPaid',
-        bankReference: 'BANK-123456',
+      const alerts = await query<{ staff_user_id: string }>(
+        db,
+        `SELECT staff_user_id FROM notifications WHERE audience = 'Staff' AND event = 'system.alert'`,
+      );
+      const alertedIds = alerts.map((a) => a.staff_user_id);
+      expect(alertedIds).toContain(finance.id);
+      expect(alertedIds).toContain(superAdmin.id);
+
+      // ۴) خطای داخلی پس از verify موفق ⇒ NeedsReview با settlement_failed و سپس ترمیم با reconcilePendingPayments
+      const offering3 = await createOffering(db, {
+        serviceDate: tomorrow(),
+        foodId: await createFood(db, 'ماکارونی'),
+        prices: { Student: 65_000 },
+        reserveDeadline: tehranDateTimeToUtc(tomorrow(), '11:59'),
       });
-      expect(paid.status).toBe(200);
-      expect((paid.body as { status: string }).status).toBe('Paid');
-
-      const paidAgain = await finClient.post(`/api/v1/finance/withdrawals/${withdrawalId}/review`, {
-        action: 'markPaid',
-        bankReference: 'BANK-123456',
+      verifyMode = 'ok';
+      const p4 = await client.post('/api/v1/payments/checkout/start', {
+        items: [{ offeringId: offering3.id }],
+        idempotencyKey: randomHex(8),
       });
-      expect(paidAgain.status).toBe(409);
+      const pid4 = (p4.body as { paymentId: string }).paymentId;
 
-      // شبا در فهرست فقط ماسک‌شده دیده می‌شود
-      const list = await finClient.get<{ withdrawals: { ibanMasked: string }[] }>('/api/v1/finance/withdrawals');
-      expect(list.raw).not.toContain('IR820540102680020817909002');
-      expect((list.body as { withdrawals: { ibanMasked: string }[] }).withdrawals[0]!.ibanMasked).toContain('•');
-
-      // رد درخواست دوم ⇒ بازگشت وجه به کیف پول
-      const second = await client.post('/api/v1/me/withdrawals', { amountRial: 200_000, iban: 'IR820540102680020817909002' });
-      const secondId = (second.body as { id: string }).id;
-      const rejected = await finClient.post(`/api/v1/finance/withdrawals/${secondId}/review`, {
-        action: 'reject',
-        reason: 'شبا اشتباه است',
+      const { settleVerifiedPayment, reconcilePendingPayments } = await import('../../src/services/payment.service.js');
+      const simFail = await settleVerifiedPayment(sandboxApp.app.deps, {
+        paymentId: pid4,
+        refId: 'REF-ERR-1',
+        gatewayName: 'sandbox',
+        ip: '127.0.0.1',
+        forceSimulateInternalError: true,
       });
-      expect(rejected.status).toBe(200);
-      const [afterReject] = await query<{ balance_rial: string }>(db, `SELECT balance_rial::text FROM accounts WHERE id = $1`, [
-        student.accountId,
-      ]);
-      // ۱٬۰۰۰٬۰۰۰ − ۴۰۰٬۰۰۰ (پرداخت‌شده) − ۲۰۰٬۰۰۰ (مسدود) + ۲۰۰٬۰۰۰ (آزادشده) = ۶۰۰٬۰۰۰
-      expect(Number(afterReject?.balance_rial)).toBe(600_000);
+      expect(simFail.status).toBe('needs_review');
+      const [row4Before] = await query<{ status: string; last_error: string }>(
+        db,
+        `SELECT status, last_error FROM payments WHERE id = $1`,
+        [pid4],
+      );
+      expect(row4Before?.status).toBe('NeedsReview');
+      expect(row4Before?.last_error).toBe('settlement_failed');
+
+      // اجرای job آشتی‌سازی ⇒ پرداخت تأییدشده تسویه و Paid می‌شود
+      const recon = await reconcilePendingPayments(sandboxApp.app.deps, 30);
+      expect(recon.needsReviewRetried).toBe(1);
+      const [row4After] = await query<{ status: string }>(db, `SELECT status FROM payments WHERE id = $1`, [pid4]);
+      expect(row4After?.status).toBe('Paid');
+
+      // ۵) پنل مالی NeedsReview را می‌بیند و می‌تواند تعیین تکلیف کند
+      const finClient = await loginStaff(sandboxApp.app, finance.username, finance.password);
+      const finList = await finClient.get<{ needsReviewCount: number }>('/api/v1/finance/payments?status=NeedsReview');
+      expect(finList.status).toBe(200);
+      expect((finList.body as { needsReviewCount: number }).needsReviewCount).toBe(1); // pid3
+      const resolved = await finClient.post(`/api/v1/finance/payments/${pid3}/resolve`, {
+        action: 'mark_failed',
+        reason: 'مغایرت مبلغ با شاپرک بررسی و وجه عودت داده شد',
+      });
+      expect(resolved.status).toBe(200);
+
       await assertLedgerInvariants();
     } finally {
-      await app.close();
+      await sandboxApp.close();
     }
-  });
-
-  it('شبای نامعتبر رد می‌شود', async () => {
-    const student = await createStudent(db, { balanceRial: 1_000_000 });
-    await db.execute(
-      sql`INSERT INTO system_settings (key, value) VALUES ('withdrawal_enabled', to_jsonb('true'::text)) ON CONFLICT (key) DO UPDATE SET value = to_jsonb('true'::text)`,
-    );
-    const client = await loginStudentClient(student);
-    const response = await client.post('/api/v1/me/withdrawals', { amountRial: 100_000, iban: 'IR000000000000000000000000' });
-    expect(response.status).toBe(400);
-    expect((response.body as { error: { message: string } }).error.message).toContain('شبا');
   });
 });
 

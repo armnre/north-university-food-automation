@@ -5,7 +5,7 @@
   "type": "module",
   "description": "بک‌اند سامانه اتوماسیون تغذیه دانشگاه شمال (Fastify + Drizzle + PostgreSQL)",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=22.0.0"
   },
   "main": "dist/server.js",
   "scripts": {
@@ -43,6 +43,7 @@
     "openapi-types": "^12.1.3",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
+    "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -54,6 +55,6 @@
     "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.5"
   }
 }

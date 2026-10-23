@@ -155,8 +155,10 @@ describe('تنظیمات سامانه', () => {
       const result = validateSettingValue(key as keyof typeof DEFAULT_SETTINGS, value);
       expect(result.ok, `${key} = ${value}`).toBe(true);
     }
+    expect(DEFAULT_SETTINGS.student_cancellation_enabled).toBe('false');
     expect(DEFAULT_SETTINGS.cancel_cutoff_hours).toBe('12');
     expect(DEFAULT_SETTINGS.noshow_grace_minutes).toBe('30');
+    expect(DEFAULT_SETTINGS.noshow_refund).toBe('false');
     expect(DEFAULT_SETTINGS.scan_window_before_minutes).toBe('60');
     expect(DEFAULT_SETTINGS.scan_window_after_minutes).toBe('60');
     expect(DEFAULT_SETTINGS.reminder_hours_before_meal).toBe('2');
@@ -170,6 +172,6 @@ describe('تنظیمات سامانه', () => {
     expect(validateSettingValue('online_payment_enabled', 'maybe').ok).toBe(false);
     expect(validateSettingValue('online_payment_enabled', 'TRUE').ok).toBe(true);
     expect(validateSettingValue('supportText', 'x'.repeat(3001)).ok).toBe(false);
-    expect(validateSettingValue('min_topup_rial', '10').ok).toBe(false);
+    expect(validateSettingValue('min_gateway_payable_rial', '10').ok).toBe(false);
   });
 });

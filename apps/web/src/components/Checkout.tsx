@@ -1,40 +1,96 @@
-import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Loader2, ReceiptText, Trash2, Wallet, XCircle } from 'lucide-react';
-import { studentCheckout } from '../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, CreditCard, Info, Loader2, ReceiptText, Trash2, XCircle } from 'lucide-react';
+import { checkoutStart, paymentStatus, studentWallet, type CheckoutStartDto } from '../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@project/components/ui/sheet';
 import { toast } from 'sonner';
-import { MEALS, errMsg, faDate, newKey, showCode, tomanText } from '../lib/format';
-import type { MenuOffering } from '../lib/types';
+import { MEALS, errMsg, faDate, newKey, rial, showCode } from '../lib/format';
+import type { MenuOffering, Wallet } from '../lib/types';
 
 /**
- * سبد خرید.
+ * سبد خرید با پرداخت مستقیم درگاه و کسر خودکار اعتبار قبلی کیف پول.
  *
- * تفاوت اساسی با نسخهٔ قبلی: **هیچ اعتباری بدون پرداخت تأییدشده ثبت نمی‌شود.**
- * رزروها مستقیماً از موجودی کیف پول کسر می‌شوند؛ اگر موجودی کافی نباشد،
- * مبلغ کسری نمایش داده می‌شود و دکمهٔ «شارژ و ادامه» کاربر را به کیف پول می‌برد.
+ *  - اگر اعتبار بازگشتی قبلی کل سفارش را پوشش دهد (`payableRial === 0`)، رزرو بلافاصله و اتمیک ثبت می‌شود.
+ *  - در غیر این صورت، اعتبار قبلی به‌صورت خودکار کسر شده و فقط مابه‌التفاوت به درگاه پرداخت ارسال می‌گردد.
+ *  - اگر درگاه غیرفعال باشد، دکمهٔ پرداخت غیرفعال شده و پیام راهنما نمایش داده می‌شود.
  */
 
-type CheckoutResult = {
-  results: { offeringId: string; ok: boolean; code: string | null; error: string | null; errorCode: string | null; priceRial: number }[];
-  succeeded: number;
-  failed: number;
-  paidRial: number;
-  balanceRial: number;
-  shortfallRial: number;
+type Props = {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  cart: MenuOffering[];
+  onRemove: (id: string) => void;
+  onPaid: () => void;
 };
 
-type Props = { open: boolean; onOpenChange: (o: boolean) => void; cart: MenuOffering[]; onRemove: (id: string) => void; onPaid: () => void };
-
 export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPaid }: Props) {
-  const navigate = useNavigate();
   const [step, setStep] = useState<'invoice' | 'done'>('invoice');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [balanceRial, setBalanceRial] = useState(0);
+  const [gatewayState, setGatewayState] = useState<{ enabled: boolean; minPayableRial: number; message: string }>({
+    enabled: false,
+    minPayableRial: 10_000,
+    message: 'درگاه پرداخت اینترنتی در حال حاضر فعال نیست.',
+  });
+  const [result, setResult] = useState<CheckoutStartDto | null>(null);
   const keyRef = useRef('');
-  const total = cart.reduce((s, o) => s + (o.myPriceRial ?? o.priceRial ?? 0), 0);
-  const snapshot = useMemo(() => Object.fromEntries(cart.map((o) => [o.id, o])), [cart]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setMetaLoading(true);
+    Promise.all([studentWallet(), paymentStatus()])
+      .then(([w, p]) => {
+        if (!active) return;
+        const wallet = w as unknown as Wallet;
+        setBalanceRial(wallet.balanceRial ?? 0);
+        setGatewayState({
+          enabled: p.enabled,
+          minPayableRial: Math.max(p.minPayableRial ?? 10_000, 10_000),
+          message: p.message,
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setMetaLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  const totalRial = useMemo(() => cart.reduce((s, o) => s + (o.myPriceRial ?? o.priceRial ?? 0), 0), [cart]);
+
+  const breakdown = useMemo(() => {
+    if (totalRial <= 0) {
+      return { creditUsedRial: 0, payableRial: 0, minPayableNote: null as string | null, belowGatewayMin: false };
+    }
+    if (balanceRial >= totalRial) {
+      return { creditUsedRial: totalRial, payableRial: 0, minPayableNote: null, belowGatewayMin: false };
+    }
+    const minPayable = gatewayState.minPayableRial;
+    if (totalRial < minPayable) {
+      return {
+        creditUsedRial: 0,
+        payableRial: totalRial,
+        minPayableNote: null,
+        belowGatewayMin: true,
+      };
+    }
+    const rawPayable = totalRial - balanceRial;
+    if (rawPayable < minPayable) {
+      const creditUsed = totalRial - minPayable;
+      const kept = balanceRial - creditUsed;
+      return {
+        creditUsedRial: creditUsed,
+        payableRial: minPayable,
+        minPayableNote: `به دلیل حداقل مبلغ تراکنش درگاه بانکی (${rial(minPayable)})، مبلغ ${rial(kept)} از اعتبار شما برای رزروهای بعدی در کیف پول باقی می‌ماند.`,
+        belowGatewayMin: false,
+      };
+    }
+    return { creditUsedRial: balanceRial, payableRial: rawPayable, minPayableNote: null, belowGatewayMin: false };
+  }, [totalRial, balanceRial, gatewayState.minPayableRial]);
 
   const close = (o: boolean) => {
     if (busy) return;
@@ -51,19 +107,27 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
     if (!keyRef.current) keyRef.current = newKey();
     setBusy(true);
     try {
-      const response = (await studentCheckout({ offeringIds: cart.map((o) => o.id), idempotencyKey: keyRef.current })) as unknown as CheckoutResult;
+      const response = await checkoutStart({
+        items: cart.map((o) => ({ offeringId: o.id })),
+        idempotencyKey: keyRef.current,
+      });
+      if (response.mode === 'gateway' && response.redirectUrl) {
+        window.location.assign(response.redirectUrl);
+        return;
+      }
       setResult(response);
       setStep('done');
-      if (response.succeeded > 0) toast.success(`${response.succeeded} وعده با موفقیت رزرو شد.`);
-      if (response.failed > 0 && response.shortfallRial > 0) {
-        toast.error(`موجودی کافی نیست؛ کسری ${tomanText(response.shortfallRial)}.`);
-      }
+      toast.success('رزرو شما با موفقیت ثبت شد.');
     } catch (e) {
+      keyRef.current = '';
       toast.error(errMsg(e));
     } finally {
       setBusy(false);
     }
   };
+
+  const needsGateway = breakdown.payableRial > 0;
+  const gatewayBlocked = needsGateway && !gatewayState.enabled;
 
   return (
     <Sheet open={open} onOpenChange={close}>
@@ -72,7 +136,7 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
         {step === 'invoice' && (
           <>
             <SheetHeader className="text-right">
-              <SheetTitle className="text-xl font-extrabold">سبد سفارش</SheetTitle>
+              <SheetTitle className="text-xl font-extrabold">سبد سفارش و پرداخت</SheetTitle>
             </SheetHeader>
             <ul className="mt-4 space-y-2">
               {cart.map((o) => (
@@ -83,9 +147,12 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
                       {MEALS[o.mealSlot] ?? o.mealSlot} · {faDate(o.serviceDate)}
                     </div>
                   </div>
-                  <span className="num text-sm font-bold">{tomanText(o.myPriceRial ?? o.priceRial)}</span>
+                  <span className="num text-sm font-bold">{rial(o.myPriceRial ?? o.priceRial)}</span>
                   <button
-                    onClick={() => onRemove(o.id)}
+                    onClick={() => {
+                      keyRef.current = '';
+                      onRemove(o.id);
+                    }}
                     className="grid h-11 w-11 place-items-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     aria-label={`حذف ${o.foodName} از سبد`}
                   >
@@ -94,74 +161,91 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
                 </li>
               ))}
             </ul>
-            <div className="mt-4 flex items-center justify-between border-t border-dashed pt-4">
-              <span className="text-muted-foreground">مبلغ قابل پرداخت از کیف پول</span>
-              <span className="num text-2xl font-extrabold">{tomanText(total)}</span>
+
+            <div className="mt-4 space-y-2 rounded-2xl border bg-card p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">جمع کل سفارش</span>
+                <span className="num font-semibold">{rial(totalRial)}</span>
+              </div>
+              {breakdown.creditUsedRial > 0 && (
+                <div className="flex items-center justify-between text-[hsl(var(--success))]">
+                  <span>کسر خودکار از اعتبار کیف پول</span>
+                  <span className="num font-semibold" dir="ltr">
+                    −{rial(breakdown.creditUsedRial)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-dashed pt-3">
+                <span className="font-semibold">
+                  {breakdown.payableRial === 0 ? 'مبلغ قابل پرداخت درگاه' : 'مبلغ قابل پرداخت آنلاین'}
+                </span>
+                <span className="num text-xl font-extrabold">{rial(breakdown.payableRial)}</span>
+              </div>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              مبلغ مستقیماً از موجودی کیف پول کسر می‌شود. اگر موجودی کافی نباشد، رزرو انجام نمی‌شود و باید کیف پول را شارژ کنید.
-            </p>
-            <Button className="mt-5 h-12 w-full rounded-2xl text-base font-bold" disabled={!cart.length || busy} onClick={submit}>
-              {busy ? <Loader2 className="ms-2 h-5 w-5 animate-spin" /> : <ReceiptText className="ms-2 h-5 w-5" />}
-              ثبت رزرو از کیف پول
+
+            {breakdown.minPayableNote && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border bg-accent p-3 text-xs leading-5 text-accent-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{breakdown.minPayableNote}</span>
+              </div>
+            )}
+
+            {breakdown.belowGatewayMin && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs leading-5 text-destructive">
+                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>حداقل مبلغ قابل پرداخت در درگاه بانکی {rial(gatewayState.minPayableRial)} است.</span>
+              </div>
+            )}
+
+            {!metaLoading && gatewayBlocked && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] p-3 text-xs leading-5">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+                <span>{gatewayState.message} برای راهنمایی با امور مالی تغذیه در ارتباط باشید.</span>
+              </div>
+            )}
+
+            <Button
+              className="mt-5 h-12 w-full rounded-2xl text-base font-bold"
+              disabled={!cart.length || busy || metaLoading || gatewayBlocked || breakdown.belowGatewayMin}
+              onClick={submit}
+            >
+              {busy || metaLoading ? (
+                <Loader2 className="ms-2 h-5 w-5 animate-spin" />
+              ) : needsGateway ? (
+                <CreditCard className="ms-2 h-5 w-5" />
+              ) : (
+                <ReceiptText className="ms-2 h-5 w-5" />
+              )}
+              {needsGateway ? 'پرداخت اینترنتی و ثبت رزرو' : 'ثبت قطعی رزرو (با اعتبار کیف پول)'}
             </Button>
           </>
         )}
+
         {step === 'done' && result && (
           <div className="py-4 text-center">
-            <div
-              className={`mx-auto grid h-20 w-20 place-items-center rounded-full animate-in zoom-in-50 ${
-                result.succeeded > 0 ? 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]' : 'bg-destructive/10 text-destructive'
-              }`}
-            >
-              {result.succeeded > 0 ? <CheckCircle2 className="h-11 w-11" /> : <XCircle className="h-11 w-11" />}
+            <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))] animate-in zoom-in-50">
+              <CheckCircle2 className="h-11 w-11" />
             </div>
-            <h3 className="mt-4 text-xl font-extrabold">{result.succeeded > 0 ? `${result.succeeded} وعده رزرو شد` : 'رزرو انجام نشد'}</h3>
+            <h3 className="mt-4 text-xl font-extrabold">{result.items.length.toLocaleString('fa-IR')} وعده رزرو شد</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              مبلغ کسر شده: <span className="num font-bold">{tomanText(result.paidRial)}</span> · موجودی فعلی:{' '}
-              <span className="num font-bold">{tomanText(result.balanceRial)}</span>
+              کسر از اعتبار: <span className="num font-bold">{rial(result.creditUsedRial)}</span> · ماندهٔ اعتبار فعلی:{' '}
+              <span className="num font-bold">{rial(result.balanceRial)}</span>
             </p>
-            {result.shortfallRial > 0 && (
-              <div className="mt-4 rounded-2xl bg-[hsl(var(--warning)/0.12)] p-4 text-right">
-                <p className="text-sm font-bold text-[hsl(var(--warning))]">کسری موجودی: {tomanText(result.shortfallRial)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">برای رزرو وعده‌های باقی‌مانده، کیف پول خود را شارژ کنید.</p>
-                <Button
-                  className="mt-3 h-11 w-full rounded-2xl"
-                  onClick={() => {
-                    close(false);
-                    navigate('/wallet');
-                  }}
-                >
-                  <Wallet className="ms-2 h-4 w-4" />
-                  شارژ و ادامه
-                </Button>
-              </div>
-            )}
             <ul className="mt-5 space-y-2 text-right">
-              {result.results.map((r) => (
+              {result.items.map((r) => (
                 <li key={r.offeringId} className="flex items-start gap-2 rounded-2xl border p-3 text-sm">
-                  {r.ok ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
-                  ) : (
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  )}
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
                   <div className="min-w-0">
-                    <div className="font-semibold">{snapshot[r.offeringId]?.foodName ?? '—'}</div>
+                    <div className="font-semibold">{r.foodName}</div>
                     <div className="text-xs text-muted-foreground">
-                      {r.ok ? (
-                        <>
-                          کد رزرو <span dir="ltr" className="font-mono">{showCode(r.code)}</span>
-                        </>
-                      ) : (
-                        r.error ?? 'رزرو انجام نشد.'
-                      )}
+                      کد رزرو <span dir="ltr" className="font-mono font-bold">{showCode(r.code)}</span>
                     </div>
                   </div>
                 </li>
               ))}
             </ul>
             <Button className="mt-5 h-12 w-full rounded-2xl" onClick={() => close(false)}>
-              بستن
+              مشاهدهٔ رزروها و بستن
             </Button>
           </div>
         )}

@@ -27,7 +27,7 @@ const STATES: Record<ScanResult['state'], { title: string; cls: string; icon: Re
 };
 
 export default function DeliveryPage() {
-  const stats = useLoad(async () => (await deliveryStats()) as { today: string; cafeteriaName: string; byMeal: { meal: string; reserved: number; delivered: number }[]; recent: { at: string; code: string; studentNumber: string; food: string; meal: string }[] });
+  const stats = useLoad(async () => (await deliveryStats()) as { today: string; cafeteriaName: string; byMeal: { mealSlot: string; reserved: number; delivered: number }[]; recent: { at: string; code: string; holderIdentifier: string; holderName: string; food: string; mealSlot: string }[] });
   const [camera, setCamera] = useState(false);
   const [camError, setCamError] = useState('');
   const [manual, setManual] = useState('');
@@ -101,8 +101,8 @@ export default function DeliveryPage() {
               <div className="flex items-center gap-4">{s.icon}<h2 className="text-xl font-bold">{s.title}</h2></div>
               {result.info && (
                 <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-muted-foreground">دانشجو</dt><dd className="font-semibold">{result.info.studentName}</dd></div>
-                  <div><dt className="text-muted-foreground">شماره دانشجویی</dt><dd className="num font-semibold">{faDigits(result.info.studentNumber)}</dd></div>
+                  <div><dt className="text-muted-foreground">دانشجو</dt><dd className="font-semibold">{result.info.holderName}</dd></div>
+                  <div><dt className="text-muted-foreground">شماره دانشجویی</dt><dd className="num font-semibold">{faDigits(result.info.holderIdentifier)}</dd></div>
                   <div><dt className="text-muted-foreground">غذا</dt><dd className="font-semibold">{result.info.foodName}</dd></div>
                   <div><dt className="text-muted-foreground">وعده</dt><dd className="font-semibold">{MEALS[result.info.mealSlot]} · {faDate(result.info.serviceDate)}</dd></div>
                 </dl>
@@ -117,12 +117,12 @@ export default function DeliveryPage() {
         </div>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            {(stats.data?.byMeal ?? []).map((m) => <StatCard key={m.meal} label={MEALS[m.meal] ?? m.meal} value={`${faNum(m.delivered)} / ${faNum(m.reserved)}`} hint="تحویل / رزرو" />)}
+            {(stats.data?.byMeal ?? []).map((m) => <StatCard key={m.mealSlot} label={MEALS[m.mealSlot] ?? m.mealSlot} value={`${faNum(m.delivered)} / ${faNum(m.reserved)}`} hint="تحویل / رزرو" />)}
             {stats.data && stats.data.byMeal.length === 0 && <p className="col-span-2 text-sm text-muted-foreground">برای امروز وعده‌ای در این سلف تعریف نشده است.</p>}
           </div>
           <Section title="آخرین تحویل‌ها">
             {!stats.data?.recent.length ? <p className="text-sm text-muted-foreground">هنوز تحویلی ثبت نشده است.</p> : (
-              <ul className="divide-y text-sm">{stats.data.recent.map((r) => <li key={r.code + r.at} className="flex justify-between py-2"><span>{r.food} <span className="text-muted-foreground">· {MEALS[r.meal]}</span></span><span className="num text-muted-foreground">{faDigits(r.studentNumber)} · {faDateTime(r.at).split('،').pop()}</span></li>)}</ul>
+              <ul className="divide-y text-sm">{stats.data.recent.map((r) => <li key={r.code + r.at} className="flex justify-between py-2"><span>{r.food} <span className="text-muted-foreground">· {MEALS[r.mealSlot] ?? r.mealSlot}</span></span><span className="num text-muted-foreground">{faDigits(r.holderIdentifier)} · {faDateTime(r.at).split('،').pop()}</span></li>)}</ul>
             )}
           </Section>
         </div>

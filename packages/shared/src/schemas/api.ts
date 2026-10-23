@@ -202,6 +202,14 @@ export const catalogResponseSchema = z.object({
   ),
 });
 
+export const foodImageUploadResponseSchema = z.object({
+  url: z.string(),
+  mimeType: z.enum(['image/webp', 'image/jpeg', 'image/png']),
+  sizeBytes: z.number().int().min(1),
+  width: z.number().int().min(1).nullable(),
+  height: z.number().int().min(1).nullable(),
+});
+
 // ---------------------------------------------------------------------------
 // منو و قیمت‌گذاری
 // ---------------------------------------------------------------------------
@@ -249,6 +257,7 @@ export const offeringDtoSchema = z.object({
   foodId: z.string(),
   foodName: z.string(),
   foodDescription: z.string(),
+  imagePath: z.string().nullable(),
   cafeteriaId: z.string(),
   cafeteriaName: z.string(),
   capacity: z.number().int(),
@@ -336,12 +345,11 @@ export const meMenuResponseSchema = z.object({
       open: z.boolean(),
       myReservationId: z.string().nullable(),
       myStatus: z.string().nullable(),
-      slotTaken: z.boolean(),
       cancelDeadline: z.string().nullable(),
     }),
   ),
   policyNote: z.string(),
-  settings: z.object({ onlinePaymentEnabled: z.boolean(), withdrawalEnabled: z.boolean() }),
+  settings: z.object({ onlinePaymentEnabled: z.boolean() }),
 });
 
 export const createReservationRequestSchema = z.object({
@@ -404,9 +412,7 @@ export const myReservationsResponseSchema = z.object({
       cafeteriaName: z.string(),
       deliveredAt: z.string().nullable(),
       cancelDeadline: z.string().nullable(),
-      canCancel: z.boolean(),
       qrToken: z.string().nullable(),
-      cancellationPolicyNote: z.string(),
     }),
   ),
 });
@@ -646,10 +652,6 @@ export const walletResponseSchema = z.object({
   balanceRial: z.number().int(),
   customerGroup: z.string(),
   onlinePaymentEnabled: z.boolean(),
-  withdrawalEnabled: z.boolean(),
-  minTopupRial: z.number().int(),
-  maxTopupRial: z.number().int(),
-  heldRial: z.number().int(),
   transactions: z.array(
     z.object({
       id: uuidSchema,
@@ -664,46 +666,89 @@ export const walletResponseSchema = z.object({
   ),
 });
 
-export const topupRequestSchema = z.object({
-  amountRial: z.number().int().min(1).max(500_000_000),
-  /** فقط مسیرهای داخلی مجازند. */
-  returnTo: z
-    .string()
-    .max(200)
-    .refine((v) => /^\/[a-zA-Z0-9/_?=&.%-]*$/.test(v), 'آدرس بازگشت باید یک مسیر داخلی باشد.')
-    .default('/wallet'),
+export const checkoutStartRequestSchema = z.object({
+  items: z
+    .array(z.object({ offeringId: uuidSchema }))
+    .min(1)
+    .max(30),
+  idempotencyKey: idempotencyKeySchema,
 });
 
-export const topupResponseSchema = z.object({
-  paymentId: uuidSchema,
+export const paymentItemResultSchema = z.object({
+  offeringId: uuidSchema,
+  foodName: z.string(),
+  serviceDate: serviceDateSchema,
+  mealSlotTitle: z.string(),
+  priceRial: z.number().int(),
+  ok: z.boolean(),
+  reservationId: uuidSchema.nullable(),
+  code: z.string().nullable(),
+  error: z.string().nullable(),
+  errorCode: z.string().nullable(),
+});
+
+export const checkoutStartResponseSchema = z.object({
+  mode: z.enum(['instant', 'gateway']),
+  paymentId: uuidSchema.nullable(),
   redirectUrl: z.string().nullable(),
-  enabled: z.boolean(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
+  payableRial: z.number().int(),
+  creditRemainingNote: z.string().nullable(),
+  items: z.array(paymentItemResultSchema),
+  balanceRial: z.number().int(),
+  replay: z.boolean(),
   message: z.string(),
 });
 
-export const withdrawalCreateRequestSchema = z.object({
-  amountRial: z.number().int().min(10_000).max(500_000_000),
-  iban: z.string().trim().min(10).max(40),
+export const paymentResultRequestSchema = z.object({
+  paymentId: uuidSchema,
 });
 
-export const withdrawalDtoSchema = z.object({
-  id: uuidSchema,
+export const paymentResultResponseSchema = z.object({
+  paymentId: uuidSchema,
+  status: z.enum(['Pending', 'Paid', 'Failed', 'NeedsReview']),
+  gateway: z.string(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
   amountRial: z.number().int(),
-  ibanMasked: z.string(),
-  status: z.string(),
+  refundedToWalletRial: z.number().int(),
+  refId: z.string().nullable(),
+  trackingCode: z.string().nullable(),
   createdAt: z.string(),
-  reviewedAt: z.string().nullable(),
-  paidAt: z.string().nullable(),
-  reason: z.string().nullable(),
-  bankReference: z.string().nullable(),
-  holderIdentifier: z.string().nullable(),
-  holderName: z.string().nullable(),
+  verifiedAt: z.string().nullable(),
+  items: z.array(paymentItemResultSchema),
+  balanceRial: z.number().int(),
+  message: z.string(),
 });
 
-export const withdrawalReviewRequestSchema = z.object({
-  action: z.enum(['approve', 'reject', 'markPaid']),
-  reason: z.string().trim().max(500).optional(),
-  bankReference: z.string().trim().max(120).optional(),
+export const financePaymentDtoSchema = z.object({
+  id: uuidSchema,
+  gateway: z.string(),
+  status: z.enum(['Pending', 'Paid', 'Failed', 'NeedsReview']),
+  amountRial: z.number().int(),
+  totalRial: z.number().int(),
+  creditUsedRial: z.number().int(),
+  authority: z.string().nullable(),
+  refId: z.string().nullable(),
+  callbackCount: z.number().int(),
+  lastError: z.string().nullable(),
+  createdAt: z.string(),
+  verifiedAt: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  resolutionNote: z.string().nullable(),
+  holderIdentifier: z.string(),
+  holderName: z.string(),
+});
+
+export const financePaymentsResponseSchema = z.object({
+  payments: z.array(financePaymentDtoSchema),
+  needsReviewCount: z.number().int(),
+});
+
+export const financePaymentResolveRequestSchema = z.object({
+  action: z.enum(['retry_settle', 'mark_failed']),
+  reason: z.string().trim().min(5, 'ثبت دلیل و مستند بررسی بانکی الزامی است (حداقل ۵ کاراکتر).').max(500),
 });
 
 // ---------------------------------------------------------------------------

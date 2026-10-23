@@ -8,15 +8,15 @@ import { z } from 'zod';
  */
 
 export const SETTING_KEYS = [
+  'student_cancellation_enabled',
   'cancel_cutoff_hours',
   'noshow_grace_minutes',
+  'noshow_refund',
   'scan_window_before_minutes',
   'scan_window_after_minutes',
-  'min_topup_rial',
-  'max_topup_rial',
+  'min_gateway_payable_rial',
   'max_manual_adjust_rial',
   'online_payment_enabled',
-  'withdrawal_enabled',
   'reminder_hours_before_meal',
   'supportText',
   'helpText',
@@ -42,6 +42,13 @@ export type SettingMeta = {
 };
 
 export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
+  student_cancellation_enabled: {
+    key: 'student_cancellation_enabled',
+    kind: 'bool',
+    labelFa: 'امکان لغو رزرو توسط دانشجو',
+    descriptionFa: 'در نسخهٔ اول خاموش است (فقط لغو اداری فعال است). با روشن کردن و فعال‌سازی مسیر API، لغو توسط دانشجو فعال می‌شود.',
+    defaultValue: 'false',
+  },
   cancel_cutoff_hours: {
     key: 'cancel_cutoff_hours',
     kind: 'int',
@@ -56,11 +63,18 @@ export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
     key: 'noshow_grace_minutes',
     kind: 'int',
     labelFa: 'فرجهٔ عدم مراجعه (دقیقه بعد از پایان وعده)',
-    descriptionFa: 'پس از پایان وعده به‌اضافهٔ این فرجه، رزرو تحویل‌نشده به «عدم مراجعه» تغییر وضعیت می‌دهد (بدون بازگشت وجه).',
+    descriptionFa: 'پس از پایان وعده به‌اضافهٔ این فرجه، رزرو تحویل‌نشده به «عدم مراجعه» تغییر وضعیت می‌دهد.',
     min: 0,
     max: 720,
     unit: 'minutes',
     defaultValue: '30',
+  },
+  noshow_refund: {
+    key: 'noshow_refund',
+    kind: 'bool',
+    labelFa: 'بازگشت وجه در صورت عدم مراجعه',
+    descriptionFa: 'پیش‌فرض خاموش است (عدم مراجعه بازپرداختی ندارد). اگر روشن شود، مبلغ رزرو عدم مراجعه به اعتبار داخلی بازمی‌گردد.',
+    defaultValue: 'false',
   },
   scan_window_before_minutes: {
     key: 'scan_window_before_minutes',
@@ -82,25 +96,15 @@ export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
     unit: 'minutes',
     defaultValue: '60',
   },
-  min_topup_rial: {
-    key: 'min_topup_rial',
+  min_gateway_payable_rial: {
+    key: 'min_gateway_payable_rial',
     kind: 'int',
-    labelFa: 'حداقل مبلغ شارژ کیف پول',
-    descriptionFa: 'کمترین مبلغ مجاز برای شارژ آنلاین کیف پول (ریال).',
+    labelFa: 'حداقل مبلغ قابل پرداخت درگاه',
+    descriptionFa: 'کمترین مبلغ مجاز برای ارسال به درگاه پرداخت زرین‌پال (ریال؛ حداقل درگاه ۱۰٬۰۰۰ ریال است).',
     min: 10_000,
-    max: 100_000_000,
+    max: 1_000_000,
     unit: 'rial',
-    defaultValue: '100000',
-  },
-  max_topup_rial: {
-    key: 'max_topup_rial',
-    kind: 'int',
-    labelFa: 'حداکثر مبلغ شارژ کیف پول',
-    descriptionFa: 'بیشترین مبلغ مجاز برای شارژ آنلاین کیف پول در هر تراکنش (ریال).',
-    min: 100_000,
-    max: 2_000_000_000,
-    unit: 'rial',
-    defaultValue: '50000000',
+    defaultValue: '10000',
   },
   max_manual_adjust_rial: {
     key: 'max_manual_adjust_rial',
@@ -116,14 +120,7 @@ export const SETTINGS_META: Record<SettingKey, SettingMeta> = {
     key: 'online_payment_enabled',
     kind: 'bool',
     labelFa: 'پرداخت اینترنتی فعال است',
-    descriptionFa: 'اگر خاموش باشد، دکمهٔ شارژ غیرفعال است و راهنمای «شارژ توسط امور مالی» نمایش داده می‌شود.',
-    defaultValue: 'false',
-  },
-  withdrawal_enabled: {
-    key: 'withdrawal_enabled',
-    kind: 'bool',
-    labelFa: 'برداشت وجه فعال است',
-    descriptionFa: 'اجازهٔ ثبت درخواست برداشت موجودی کیف پول به شبای بانکی دانشجو/کارمند.',
+    descriptionFa: 'اگر خاموش باشد، پرداخت مستقیم از درگاه غیرفعال است و پیام راهنما نمایش داده می‌شود.',
     defaultValue: 'false',
   },
   reminder_hours_before_meal: {
@@ -201,15 +198,15 @@ export function validateSettingValue(key: SettingKey, raw: unknown): { ok: true;
 
 /** مقدارهای تایپ‌شدهٔ تنظیمات (پس از خواندن از دیتابیس). */
 export type ResolvedSettings = {
+  studentCancellationEnabled: boolean;
   cancelCutoffHours: number;
   noshowGraceMinutes: number;
+  noShowRefund: boolean;
   scanWindowBeforeMinutes: number;
   scanWindowAfterMinutes: number;
-  minTopupRial: number;
-  maxTopupRial: number;
+  minGatewayPayableRial: number;
   maxManualAdjustRial: number;
   onlinePaymentEnabled: boolean;
-  withdrawalEnabled: boolean;
   reminderHoursBeforeMeal: number;
   supportText: string;
   helpText: string;
@@ -235,15 +232,15 @@ export function resolveSettings(rows: Partial<Record<SettingKey, string | null |
     return v == null || v === '' ? DEFAULT_SETTINGS[k] : String(v);
   };
   return {
+    studentCancellationEnabled: toBool(get('student_cancellation_enabled'), DEFAULT_SETTINGS.student_cancellation_enabled),
     cancelCutoffHours: toInt(get('cancel_cutoff_hours'), DEFAULT_SETTINGS.cancel_cutoff_hours),
     noshowGraceMinutes: toInt(get('noshow_grace_minutes'), DEFAULT_SETTINGS.noshow_grace_minutes),
+    noShowRefund: toBool(get('noshow_refund'), DEFAULT_SETTINGS.noshow_refund),
     scanWindowBeforeMinutes: toInt(get('scan_window_before_minutes'), DEFAULT_SETTINGS.scan_window_before_minutes),
     scanWindowAfterMinutes: toInt(get('scan_window_after_minutes'), DEFAULT_SETTINGS.scan_window_after_minutes),
-    minTopupRial: toInt(get('min_topup_rial'), DEFAULT_SETTINGS.min_topup_rial),
-    maxTopupRial: toInt(get('max_topup_rial'), DEFAULT_SETTINGS.max_topup_rial),
+    minGatewayPayableRial: toInt(get('min_gateway_payable_rial'), DEFAULT_SETTINGS.min_gateway_payable_rial),
     maxManualAdjustRial: toInt(get('max_manual_adjust_rial'), DEFAULT_SETTINGS.max_manual_adjust_rial),
     onlinePaymentEnabled: toBool(get('online_payment_enabled'), DEFAULT_SETTINGS.online_payment_enabled),
-    withdrawalEnabled: toBool(get('withdrawal_enabled'), DEFAULT_SETTINGS.withdrawal_enabled),
     reminderHoursBeforeMeal: toInt(get('reminder_hours_before_meal'), DEFAULT_SETTINGS.reminder_hours_before_meal),
     supportText: get('supportText'),
     helpText: get('helpText'),

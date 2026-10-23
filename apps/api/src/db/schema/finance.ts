@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { accounts, staffUsers } from './identity.js';
 import { createdAt, id, updatedAt } from './base.js';
 
@@ -86,7 +86,39 @@ export const ledgerEntries = pgTable(
   ],
 );
 
-/** پرداخت‌های درگاه (زرین‌پال پشت Feature Flag). */
+/** پرداخت‌های مستقیم درگاه (رزرو مستقیم سبد خرید از زرین‌پال با کسر خودکار اعتبار قبلی). */
+export type PaymentCartItem = {
+  offeringId: string;
+  priceAtStartRial: number;
+  foodName: string;
+  serviceDate: string;
+  mealSlotTitle: string;
+};
+
+export type PaymentSettlementItemResult = {
+  offeringId: string;
+  foodName: string;
+  serviceDate: string;
+  mealSlotTitle: string;
+  priceRial: number;
+  ok: boolean;
+  reservationId: string | null;
+  code: string | null;
+  error: string | null;
+  errorCode: string | null;
+};
+
+export type PaymentSettlementResult = {
+  trackingCode: string;
+  paidFromGatewayRial: number;
+  creditUsedRial: number;
+  refundedToWalletRial: number;
+  balanceRial: number;
+  succeeded: number;
+  failed: number;
+  items: PaymentSettlementItemResult[];
+};
+
 export const payments = pgTable(
   'payments',
   {
@@ -99,15 +131,25 @@ export const payments = pgTable(
     authority: varchar('authority', { length: 120 }),
     refId: varchar('ref_id', { length: 120 }),
     amountRial: bigint('amount_rial', { mode: 'number' }).notNull(),
+    totalRial: bigint('total_rial', { mode: 'number' }).notNull().default(0),
+    creditUsedRial: bigint('credit_used_rial', { mode: 'number' }).notNull().default(0),
+    cartItems: jsonb('cart_items')
+      .$type<PaymentCartItem[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    resultJson: jsonb('result_json').$type<PaymentSettlementResult | null>(),
     /** Pending | Paid | Failed | NeedsReview */
     status: varchar('status', { length: 20 }).notNull().default('Pending'),
     callbackCount: integer('callback_count').notNull().default(0),
     verifiedAt: timestamp('verified_at', { withTimezone: true }),
-    /** کلید idempotency ثبت دفتر کل برای callback تکراری/هم‌زمان. */
+    /** کلید idempotency شروع پرداخت و ثبت دفتر کل برای callback تکراری/هم‌زمان. */
     idempotencyKey: varchar('idempotency_key', { length: 200 }).notNull(),
     /** فقط مسیرهای داخلی سامانه مجازند (جلوگیری از open redirect). */
-    returnTo: varchar('return_to', { length: 500 }).notNull().default('/wallet'),
+    returnTo: varchar('return_to', { length: 500 }).notNull().default('/payment/result'),
     lastError: varchar('last_error', { length: 200 }),
+    resolvedBy: uuid('resolved_by').references(() => staffUsers.id, { onDelete: 'restrict' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolutionNote: text('resolution_note'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -118,6 +160,8 @@ export const payments = pgTable(
     index('payments_status_created_idx').on(t.status, t.createdAt),
     check('payments_status_check', sql`${t.status} IN ('Pending','Paid','Failed','NeedsReview')`),
     check('payments_amount_positive', sql`${t.amountRial} > 0`),
+    check('payments_total_non_negative', sql`${t.totalRial} >= 0`),
+    check('payments_credit_non_negative', sql`${t.creditUsedRial} >= 0`),
     check('payments_gateway_check', sql`${t.gateway} IN ('zarinpal','sandbox')`),
     check('payments_return_to_internal', sql`${t.returnTo} ~ '^/[a-zA-Z0-9/_?=&.%-]*$'`),
   ],

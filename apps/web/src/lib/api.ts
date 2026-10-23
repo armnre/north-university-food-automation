@@ -316,6 +316,14 @@ export const catalogSave = (input: { item: CatalogItem }) =>
   input.item.id
     ? api.put<{ id: string }>(`/catalog/${input.item.kind}/${input.item.id}`, { item: input.item })
     : api.post<{ id: string }>('/catalog', { item: input.item });
+export const uploadFoodImage = (file: File) =>
+  api.upload<{
+    url: string;
+    mimeType: 'image/webp' | 'image/jpeg' | 'image/png';
+    sizeBytes: number;
+    width: number | null;
+    height: number | null;
+  }>('/uploads/food-image', file);
 
 // --- منو و وعده‌ها ---------------------------------------------------------
 export type OfferingQuery = { from?: string; to?: string; cafeteriaId?: string; mealSlot?: string; status?: string; foodId?: string };
@@ -419,17 +427,59 @@ export const studentCheckout = (input: { offeringIds?: string[]; items?: { offer
     items: (input.items ?? (input.offeringIds ?? []).map((offeringId) => ({ offeringId }))).slice(0, 30),
     idempotencyKey: input.idempotencyKey,
   });
+export type PaymentItemResultDto = {
+  offeringId: string;
+  foodName: string;
+  serviceDate: string;
+  mealSlotTitle: string;
+  priceRial: number;
+  ok: boolean;
+  reservationId: string | null;
+  code: string | null;
+  error: string | null;
+  errorCode: string | null;
+};
+
+export type CheckoutStartDto = {
+  mode: 'instant' | 'gateway';
+  paymentId: string | null;
+  redirectUrl: string | null;
+  totalRial: number;
+  creditUsedRial: number;
+  payableRial: number;
+  creditRemainingNote: string | null;
+  items: PaymentItemResultDto[];
+  balanceRial: number;
+  replay: boolean;
+  message: string;
+};
+
+export type PaymentResultDto = {
+  paymentId: string;
+  status: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview';
+  gateway: string;
+  totalRial: number;
+  creditUsedRial: number;
+  amountRial: number;
+  refundedToWalletRial: number;
+  refId: string | null;
+  trackingCode: string | null;
+  createdAt: string;
+  verifiedAt: string | null;
+  items: PaymentItemResultDto[];
+  balanceRial: number;
+  message: string;
+};
+
+export const checkoutStart = (input: { items: { offeringId: string }[]; idempotencyKey: string }) =>
+  api.post<CheckoutStartDto>('/payments/checkout/start', input);
+export const paymentResult = (paymentId: string) =>
+  api.post<PaymentResultDto>('/payments/result', { paymentId });
 export const studentReservations = () => api.get<Record<string, unknown>>('/me/reservations');
-export const cancelReservation = (id: string) =>
-  api.post<{ id: string; status: string; refundedRial: number; balanceRial: number }>(`/me/reservations/${id}/cancel`);
 export const reissueQr = (id: string) => api.post<{ id: string; qrToken: string; issuedAt: string }>(`/me/reservations/${id}/qr/reissue`);
 export const studentWallet = () => api.get<Record<string, unknown>>('/me/wallet');
-export const topupWallet = (input: { amountRial: number; returnTo?: string }) =>
-  api.post<{ paymentId: string; redirectUrl: string | null; enabled: boolean; message: string }>('/me/wallet/topup', input);
 export const paymentStatus = () =>
-  api.get<{ enabled: boolean; gateway: string; minTopupRial: number; maxTopupRial: number; message: string }>('/payments/status');
-export const createWithdrawal = (input: { amountRial: number; iban: string }) => api.post<Record<string, unknown>>('/me/withdrawals', input);
-export const myWithdrawals = () => api.get<{ withdrawals: unknown[] }>('/me/withdrawals');
+  api.get<{ enabled: boolean; gateway: string; minPayableRial: number; message: string }>('/payments/status');
 export const studentNotifications = () => api.get<Record<string, unknown>>('/me/notifications');
 export const markNotificationsRead = (notificationIds?: string[]) => api.post<{ ok: true }>('/me/notifications/read', { notificationIds });
 
@@ -481,11 +531,31 @@ export const financeAdjust = (input: {
 
 export const financeLedger = (query: { type?: string; search?: string; from?: string; to?: string; customerGroup?: string; offset?: number; limit?: number } = {}) =>
   api.get<Record<string, unknown>>('/finance/ledger', query);
+export const financePayments = (query: { status?: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview'; offset?: number; limit?: number } = {}) =>
+  api.get<{
+    payments: {
+      id: string;
+      gateway: string;
+      status: 'Pending' | 'Paid' | 'Failed' | 'NeedsReview';
+      amountRial: number;
+      totalRial: number;
+      creditUsedRial: number;
+      authority: string | null;
+      refId: string | null;
+      callbackCount: number;
+      lastError: string | null;
+      createdAt: string;
+      verifiedAt: string | null;
+      resolvedAt: string | null;
+      resolutionNote: string | null;
+      holderIdentifier: string;
+      holderName: string;
+    }[];
+    needsReviewCount: number;
+  }>('/finance/payments', query);
+export const resolveFinancePayment = (id: string, body: { action: 'retry_settle' | 'mark_failed'; reason: string }) =>
+  api.post<{ status: 'Paid' | 'Failed' | 'NeedsReview' }>(`/finance/payments/${id}/resolve`, body);
 export const financeReconcile = () => api.get<Record<string, unknown>>('/finance/reconcile');
-export const withdrawalsList = (query: { status?: string; offset?: number; limit?: number } = {}) =>
-  api.get<{ withdrawals: unknown[] }>('/finance/withdrawals', query);
-export const reviewWithdrawal = (id: string, body: { action: 'approve' | 'reject' | 'markPaid'; reason?: string; bankReference?: string }) =>
-  api.post<Record<string, unknown>>(`/finance/withdrawals/${id}/review`, body);
 
 // --- واردسازی اکسل -------------------------------------------------------
 /** آپلود فایل xlsx به سرور (پارس سمت سرور با exceljs). */
@@ -533,7 +603,7 @@ export type SettingsPayload = {
   payment: { enabled: boolean; merchantConfigured: boolean; gateway: string };
 };
 export const settingsManage = (input?: { values?: Record<string, string | number | boolean>; mealSlots?: unknown[] }) =>
-  input
+  input && (input.values !== undefined || input.mealSlots !== undefined)
     ? api.put<SettingsPayload>('/settings', input)
     : api.get<SettingsPayload>('/settings');
 

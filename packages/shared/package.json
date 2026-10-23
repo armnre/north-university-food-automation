@@ -4,6 +4,9 @@
   "private": true,
   "description": "نوع‌ها، اسکیماهای Zod، ماتریس مجوزها و توابع دامنه‌ای مشترک بین API و فرانت‌اند",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

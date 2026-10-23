@@ -54,7 +54,11 @@ export const envSchema = z
 
     CSRF_SECRET: z.string().min(32, 'CSRF_SECRET باید حداقل ۳۲ کاراکتر باشد'),
     NATIONAL_ID_PEPPER: z.string().min(32, 'NATIONAL_ID_PEPPER باید حداقل ۳۲ کاراکتر باشد'),
-    DATA_ENCRYPTION_KEY: z.string().regex(HEX_64, 'DATA_ENCRYPTION_KEY باید ۶۴ کاراکتر hex (۳۲ بایت) باشد'),
+    DATA_ENCRYPTION_KEY: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined))
+      .refine((v) => v === undefined || HEX_64.test(v), 'DATA_ENCRYPTION_KEY در صورت تنظیم باید ۶۴ کاراکتر hex (۳۲ بایت) باشد'),
     SETUP_CODE: z.string().min(16).optional(),
 
     SESSION_COOKIE_NAME: z.string().min(3).default('__Host-sid'),
@@ -86,6 +90,9 @@ export const envSchema = z
 
     SERVE_STATIC: boolFromText(false),
     WEB_DIST_PATH: z.string().optional(),
+    UPLOAD_DIR: z.string().min(1).default('.uploads'),
+    FOOD_IMAGE_MAX_BYTES: intFromText(2_097_152).pipe(z.number().int().min(10_240).max(10_485_760)),
+    SHARP_DISABLE: boolFromText(false),
 
     ALLOW_DEMO_SEED: boolFromText(false),
     TEST_DATABASE_URL: z.string().optional(),

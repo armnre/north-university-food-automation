@@ -55,10 +55,11 @@ export const reservations = pgTable(
     uniqueIndex('reservations_code_key').on(t.code),
     uniqueIndex('reservations_idempotency_key').on(t.idempotencyKey),
     uniqueIndex('reservations_qr_token_key').on(t.qrToken),
-    /** یک رزرو فعال برای هر (حساب، روز سرویس، وعده) */
-    uniqueIndex('reservations_one_live_per_slot')
-      .on(t.accountId, t.serviceDate, t.mealSlotId)
+    /** حداکثر یک رزرو فعال/تحویلی برای هر (حساب، آیتم منو) — چند غذای مختلف در یک وعده مجاز است */
+    uniqueIndex('reservations_one_live_per_offering')
+      .on(t.accountId, t.offeringId)
       .where(sql`${t.status} IN ('Reserved','Delivered')`),
+    index('reservations_account_slot_idx').on(t.accountId, t.serviceDate, t.mealSlotId),
     index('reservations_account_status_idx').on(t.accountId, t.status),
     index('reservations_offering_status_idx').on(t.offeringId, t.status),
     index('reservations_service_date_idx').on(t.serviceDate, t.status),

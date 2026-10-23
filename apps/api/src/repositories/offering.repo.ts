@@ -16,6 +16,7 @@ export type OfferingRow = {
   foodId: string;
   foodName: string;
   foodDescription: string;
+  foodImagePath: string | null;
   cafeteriaId: string;
   cafeteriaName: string;
   capacity: number;
@@ -75,7 +76,7 @@ export async function queryOfferings(target: Db | Tx, filters: OfferingFilters =
               o.status_reason AS "statusReason", o.reserve_opens_at AS "reserveOpensAt", o.reserve_deadline AS "reserveDeadline",
               o.cancel_deadline AS "cancelDeadline", o.published_at AS "publishedAt",
               ms.id AS "mealSlotId", ms.code AS "mealSlot", ms.title AS "mealSlotTitle", ms.start_time AS "slotStartTime", ms.end_time AS "slotEndTime",
-              f.id AS "foodId", f.name AS "foodName", f.description AS "foodDescription",
+              f.id AS "foodId", f.name AS "foodName", f.description AS "foodDescription", f.image_path AS "foodImagePath",
               c.id AS "cafeteriaId", c.name AS "cafeteriaName",
               (SELECT COUNT(*) FROM reservations r WHERE r.offering_id = o.id AND r.status = 'Delivered')::int AS delivered,
               (SELECT COUNT(*) FROM reservations r WHERE r.offering_id = o.id AND r.status = 'Cancelled')::int AS cancelled,
@@ -129,6 +130,7 @@ export async function queryOfferings(target: Db | Tx, filters: OfferingFilters =
       foodId: String(r.foodId ?? ''),
       foodName: String(r.foodName ?? ''),
       foodDescription: String(r.foodDescription ?? ''),
+      foodImagePath: r.foodImagePath == null ? null : String(r.foodImagePath),
       cafeteriaId: String(r.cafeteriaId ?? ''),
       cafeteriaName: String(r.cafeteriaName ?? ''),
       capacity,

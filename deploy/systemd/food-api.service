@@ -1,0 +1,39 @@
+[Unit]
+Description=North University Food Automation API (Fastify)
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=food
+Group=food
+WorkingDirectory=/opt/food/current
+EnvironmentFile=/etc/food/app.env
+ExecStart=/opt/food/node/current/bin/node apps/api/dist/server.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=25
+KillSignal=SIGTERM
+
+# محدودسازی منابع جهت عدم تأثیر روی سایر سرویس‌های سرور (مانند shomaldoc)
+MemoryMax=768M
+CPUQuota=200%
+
+# سخت‌سازی امنیتی systemd
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/food/shared
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=food-api
+
+[Install]
+WantedBy=multi-user.target

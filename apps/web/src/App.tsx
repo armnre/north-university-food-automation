@@ -1,11 +1,12 @@
 import { BrowserRouter } from 'react-router-dom';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from '@project/components/ui/sonner';
 import { SessionProvider, useSession, type EmployeeMe, type StudentMe } from './lib/session';
-import LoginPage from './pages/LoginPage';
-import StudentApp from './pages/student/StudentApp';
-import StaffApp from './pages/staff/StaffApp';
 import { LoadingBlock } from './components/ui-kit';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const StudentApp = lazy(() => import('./pages/student/StudentApp'));
+const StaffApp = lazy(() => import('./pages/staff/StaffApp'));
 
 /** کارمند/هیئت‌علمی همان UI دانشجو را دارد (با شناسهٔ نام کاربری به‌جای شمارهٔ دانشجویی). */
 function employeeAsStudent(e: EmployeeMe): StudentMe {
@@ -26,11 +27,32 @@ function employeeAsStudent(e: EmployeeMe): StudentMe {
 
 function Gate() {
   const { me, loading } = useSession();
-  if (loading) return <div className="mx-auto max-w-md p-10"><LoadingBlock rows={3} /></div>;
-  if (!me) return <LoginPage />;
-  if (me.kind === 'staff') return <StaffApp me={me.staff} />;
-  if (me.kind === 'employee') return <StudentApp me={employeeAsStudent(me.employee)} />;
-  return <StudentApp me={me.student} />;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-md p-10">
+        <LoadingBlock rows={3} />
+      </div>
+    );
+  }
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-md p-10">
+          <LoadingBlock rows={3} />
+        </div>
+      }
+    >
+      {!me ? (
+        <LoginPage />
+      ) : me.kind === 'staff' ? (
+        <StaffApp me={me.staff} />
+      ) : me.kind === 'employee' ? (
+        <StudentApp me={employeeAsStudent(me.employee)} />
+      ) : (
+        <StudentApp me={me.student} />
+      )}
+    </Suspense>
+  );
 }
 
 export default function App() {
@@ -55,12 +77,14 @@ export default function App() {
         toastOptions={{
           duration: 4500,
           classNames: {
-            toast: 'group !w-[calc(100vw-2rem)] sm:!w-[380px] !max-w-[calc(100vw-2rem)] !rounded-2xl !border !border-border/70 !bg-card/95 !backdrop-blur-xl !shadow-[0_12px_40px_-12px_hsl(var(--foreground)/0.25)] !px-4 !py-3 !gap-3 font-sans',
+            toast:
+              'group !w-[calc(100vw-2rem)] sm:!w-[380px] !max-w-[calc(100vw-2rem)] !rounded-2xl !border !border-border/70 !bg-card/95 !backdrop-blur-xl !shadow-[0_12px_40px_-12px_hsl(var(--foreground)/0.25)] !px-4 !py-3 !gap-3 font-sans',
             title: '!text-sm !font-semibold !leading-6 break-words',
             description: '!text-xs !text-muted-foreground break-words',
             icon: '!m-0',
             error: '!border-destructive/30 [&_[data-icon]]:!text-destructive !bg-gradient-to-l !from-destructive/10 !to-card',
-            success: '!border-[hsl(var(--success)/0.35)] [&_[data-icon]]:!text-[hsl(var(--success))] !bg-gradient-to-l !from-[hsl(var(--success)/0.10)] !to-card',
+            success:
+              '!border-[hsl(var(--success)/0.35)] [&_[data-icon]]:!text-[hsl(var(--success))] !bg-gradient-to-l !from-[hsl(var(--success)/0.10)] !to-card',
             warning: '[&_[data-icon]]:!text-[hsl(var(--warning))]',
             closeButton: '!bg-card !border-border',
           },

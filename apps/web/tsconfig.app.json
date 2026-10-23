@@ -19,6 +19,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
+    "types": ["vite/client", "vite-plugin-pwa/react"],
     "paths": {
       "@/*": ["./src/*"],
       "@project/components/*": ["../../packages/components/*"]

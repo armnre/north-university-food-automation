@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import EmbeddedPostgres from 'embedded-postgres';
+import pgPkg from 'pg';
 import { runMigrations } from '../src/db/migrate.js';
 
 /**
@@ -54,7 +55,24 @@ export async function setup(): Promise<() => Promise<void>> {
   const external = process.env.TEST_DATABASE_URL?.trim();
   if (external) {
     await runMigrations({ connectionString: external, log: verbose ? (m) => process.stdout.write(`[test-db] ${m}\n`) : quiet });
-    writeFileSync(stateFile, JSON.stringify({ url: external, embedded: false }), 'utf8');
+    let appUrl = process.env.TEST_APP_ROLE_DATABASE_URL?.trim();
+    if (!appUrl) {
+      const parsed = new URL(external);
+      const dbName = parsed.pathname.replace(/^\//, '');
+      const admin = new pgPkg.Client({ connectionString: external });
+      await admin.connect();
+      await admin.query(`ALTER ROLE food_app WITH LOGIN PASSWORD 'food_app_test'`);
+      await admin.query(`ALTER ROLE food_migrator WITH LOGIN PASSWORD 'food_migrator_test'`);
+      if (/^[a-zA-Z0-9_]+$/.test(dbName)) {
+        await admin.query(`GRANT CONNECT ON DATABASE "${dbName}" TO food_app`);
+        await admin.query(`GRANT CONNECT ON DATABASE "${dbName}" TO food_migrator`);
+      }
+      await admin.end();
+      parsed.username = 'food_app';
+      parsed.password = 'food_app_test';
+      appUrl = parsed.toString();
+    }
+    writeFileSync(stateFile, JSON.stringify({ url: external, appUrl, embedded: false }), 'utf8');
     process.stdout.write(`[test-db] استفاده از پایگاه دادهٔ خارجی ${external.replace(/:[^:@/]+@/, ':***@')}\n`);
     return async () => {
       rmSync(stateFile, { force: true });

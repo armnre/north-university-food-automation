@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#155b50" />
+    <title>عدم دسترسی به شبکه — سامانه تغذیه دانشگاه شمال</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        font-family: Tahoma, system-ui, -apple-system, sans-serif;
+        background: radial-gradient(circle at top right, #e6f4f0, #f7fbf9 65%);
+        color: #152b27;
+      }
+      .card {
+        width: 100%;
+        max-width: 26rem;
+        background: #ffffff;
+        border: 1px solid #d7e5e0;
+        border-radius: 1.5rem;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 18px 40px -18px rgba(12, 54, 48, 0.22);
+      }
+      .logo { width: 4.5rem; height: 4.5rem; margin: 0 auto 1rem; display: block; }
+      h1 { margin: 0 0 0.5rem; font-size: 1.2rem; font-weight: 800; }
+      p { margin: 0 0 1.25rem; font-size: 0.9rem; line-height: 1.8; color: #4f6661; }
+      button {
+        min-height: 44px;
+        width: 100%;
+        border: 0;
+        border-radius: 0.9rem;
+        background: #155b50;
+        color: #f7fbf9;
+        font-family: inherit;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img src="/logo.svg" alt="لوگوی سامانه تغذیه دانشگاه شمال" class="logo" />
+      <h1>اتصال اینترنت برقرار نیست</h1>
+      <p>
+        ارتباط دستگاه شما با سرور سامانه تغذیه دانشگاه شمال قطع شده است. برای مشاهدهٔ منو، ثبت رزرو یا پرداخت مستقیم، اتصال شبکه را بررسی کرده و دوباره تلاش کنید.
+      </p>
+      <button type="button" onclick="window.location.reload()">تلاش دوباره</button>
+    </main>
+  </body>
+</html>

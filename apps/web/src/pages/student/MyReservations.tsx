@@ -61,7 +61,7 @@ export default function MyReservations() {
                 <span className="min-w-0 flex-1 p-3.5">
                   <span className="flex items-center gap-2"><span className="truncate font-bold">{r.foodName}</span><Pill tone={RES_STATUS[r.status]?.tone ?? 'muted'}>{RES_STATUS[r.status]?.label ?? r.status}</Pill></span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{MEALS[r.mealSlot]} · {faDate(r.serviceDate)}</span>
-                  <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{r.cafeteriaName} · <span className="num">{rial(r.priceAtBooking)}</span></span>
+                  <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{r.cafeteriaName} · <span className="num">{rial(r.priceRial)}</span></span>
                   {r.deliveredAt && <span className="mt-0.5 block text-xs text-[hsl(var(--success))]">تحویل: {faDateTime(r.deliveredAt)}</span>}
                 </span>
                 {active && <span className="flex flex-col items-center justify-center gap-1 px-3 text-primary"><Ticket className="h-5 w-5" /><span className="text-[10px] font-bold">بلیط</span><ChevronLeft className="h-3.5 w-3.5" /></span>}

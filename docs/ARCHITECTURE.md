@@ -1,19 +1,53 @@
-# ARCHITECTURE
+# معماری کلان سامانه (`docs/ARCHITECTURE.md`)
 
+سامانه اتوماسیون تغذیه دانشگاه شمال یک سیستم وب مستقل (Self-Hosted Monorepo) بدون هیچ وابستگی به پلتفرم‌های ابری خارجی است که برای اجرا روی سرور لینوکسی دانشگاه طراحی شده است.
+
+---
+
+## ۱. اجزای Monorepo
+
+```text
+packages/shared/       اسکیماهای Zod، خطاها، ماتریس RBAC، تنظیمات، تبدیل ریال/تومان و زمان تهران
+packages/components/   اجزای پایهٔ رابط کاربری (Radix UI + Tailwind CSS)
+apps/api/              سرویس HTTP (Fastify 5 + Drizzle ORM) و پردازشگر پس‌زمینه (worker.ts)
+apps/web/              وب‌اپلیکیشن پیش‌روندهٔ فارسی/RTL (React 18 + Vite + Workbox PWA)
+deploy/                اسکریپت‌های استقرار اتمیک، systemd، پشتیبان‌گیری و پیکربندی Plesk nginx
 ```
-apps/app/
-  src/            React + Vite + TypeScript + Tailwind (فرانت‌اند)
-  src/pages/      student/* و staff/* — پنل‌های جدا بر اساس نقش
-  src/api/*.ts    هر فایل = یک endpoint (Cloudflare Worker در Zite)
-  src/server/     منطق مشترک بک‌اند: core.ts (احراز هویت، RBAC، دفترکل، ممیزی)، queries.ts، delivery.ts
-  docs/
+
+---
+
+## ۲. توپولوژی اجرای تولیدی
+
+```text
+[مرورگر / موبایل دانشجو و اپراتور (PWA RTL)]
+                    │ HTTPS (443)
+                    ▼
+       [Plesk nginx Reverse Proxy]
+   (/sw.js و /manifest.webmanifest بدون کش)
+                    │ HTTP محلی (127.0.0.1:3101)
+                    ▼
+     ┌──────────────────────────────┐
+     │   food-api.service (Node 22) │──► /opt/food/shared/uploads (تصاویر غذا)
+     │   Fastify 5 + SERVE_STATIC   │──► /opt/food/current/apps/web/dist (SPA)
+     └──────────────┬───────────────┘
+                    │ نقش محدود food_app (فقط DML)
+                    ▼
+     ┌──────────────────────────────┐
+     │   PostgreSQL 16 (127.0.0.1)  │◄── food-migrator (فقط در لحظهٔ deploy)
+     │   DB: food_automation        │
+     └──────────────▲───────────────┘
+                    │ نقش محدود food_app + pg_try_advisory_lock
+     ┌──────────────┴───────────────┐
+     │ food-worker.service (Node 22)│
+     │ زمان‌بند مستقل Asia/Tehran    │
+     └──────────────────────────────┘
 ```
 
-- فرانت‌اند فقط endpointهای `zitejs/api` را صدا می‌زند؛ اتصال مستقیم مرورگر به دیتابیس وجود ندارد.
-- هر endpoint یک `token` نشست می‌گیرد و `requireStudent` / `requireStaff(perm)` را سمت سرور اجرا می‌کند.
-- دیتابیس: Zite Database (PostgreSQL مدیریت‌شده). نوشتن از طریق SDK جدولی و خواندن تجمیعی با SQL پارامتری (`zite.sql`).
+---
 
-## مرز وابستگی به Zite
+## ۳. تصمیم‌های کلیدی معماری
 
-وابسته به Zite: `zitejs/db`، `zitejs/backend` (createEndpoint)، `zitejs/api`، runtime Worker، Secrets.
-قابل‌انتقال: تمام کامپوننت‌های React، منطق اعتبارسنجی (zod)، الگوریتم‌های کد ملی، هش، رزرو، دفترکل و QR در `src/server` (با جایگزینی لایه‌ی دسترسی به داده).
+1. **یکپارچگی هم‌دامنه (Same-Origin):** سرویس `food-api` در حالت تولیدی با `SERVE_STATIC=true` فایل‌های کامپایل‌شدهٔ فرانت‌اند (`apps/web/dist`) و تصاویر آپلودشده (`/uploads`) را پشت Plesk nginx سرو می‌کند؛ این معماری نیاز به CORS را به صفر رسانده و امکان استفاده از کوکی امن `__Host-sid` با `SameSite=Strict` را فراهم می‌سازد.
+2. **جداسازی کامل فرآیند وب و زمان‌بند پس‌زمینه:** کارهای زمان‌بندی‌شده (`NoShow`، آشتی‌سازی پرداخت‌های زرین‌پال، پاک‌سازی نشست‌ها/کپچاها و بررسی تراز دفتر کل) در فرآیند مستقل `food-worker` اجرا می‌شوند و با `pg_try_advisory_lock` از اجرای تکراری در صورت اجرای چند نمونه جلوگیری می‌کنند.
+3. **تضمین صحت مالی در سطح موتور دیتابیس:** علاوه بر تراکنش‌های اسیدی و `SELECT ... FOR UPDATE` در لایهٔ سرویس، تریگرهای PostgreSQL تغییر یا حذف سطرهای دفتر کل و لاگ ممیزی را مسدود کرده و جمع صفر هر تراکنش مالی را در لحظهٔ `COMMIT` اجبار می‌کنند.
+4. **صفر وابستگی خارجی در فرانت‌اند:** فونت فارسی `Vazirmatn`، لوگو و تمام آیکن‌های PWA به صورت محلی از خود دامنه سرو می‌شوند تا در شرایط اختلال اینترنت بین‌الملل نیز سامانه بدون وقفه در شبکهٔ ملی و داخلی دانشگاه کار کند.

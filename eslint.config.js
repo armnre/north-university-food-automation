@@ -68,6 +68,7 @@ export default tseslint.config(
       'apps/api/src/cli/**/*.{ts,mjs}',
       'apps/api/src/worker.ts',
       'apps/api/test/**/*.{ts,mts}',
+      'apps/web/e2e/**/*.ts',
       'tools/**/*.{ts,mjs}',
     ],
     rules: { 'no-restricted-properties': 'off', 'no-console': 'off', 'no-restricted-syntax': 'off' },

@@ -1,0 +1,8 @@
+[Unit]
+Description=North University Food Automation Health Check
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/food/healthcheck.sh

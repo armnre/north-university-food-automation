@@ -26,6 +26,21 @@ import type { ServiceDeps } from '../types.js';
 
 const PERMISSIONS_POLICY = ['camera=(self)', 'geolocation=()', 'microphone=()', 'payment=()', 'usb=()', 'interest-cohort=()'].join(', ');
 
+const SPA_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "form-action 'self'",
+].join('; ');
+
 export async function registerSecurity(app: FastifyInstance, deps: ServiceDeps): Promise<void> {
   await app.register(helmet, {
     global: true,
@@ -53,8 +68,12 @@ export async function registerSecurity(app: FastifyInstance, deps: ServiceDeps):
   } as never);
 
   // helmet از Permissions-Policy پشتیبانی مستقیم ندارد ⇒ هدر دستی
-  app.addHook('onSend', async (_request, reply) => {
+  // همچنین برای مسیرهای استاتیک SPA (غیر از /api و /uploads) هدر CSP سازگار با اپ هم‌دامنه تنظیم می‌شود.
+  app.addHook('onSend', async (request, reply) => {
     void reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+    if (deps.env.SERVE_STATIC && !request.url.startsWith('/api') && !request.url.startsWith('/uploads')) {
+      void reply.header('Content-Security-Policy', SPA_CSP);
+    }
   });
 
   await app.register(rateLimit, {

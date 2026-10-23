@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
+@import '@fontsource-variable/vazirmatn';
 
 @tailwind base;
 @tailwind components;
@@ -60,8 +60,8 @@
     --chart-3: 145 50% 42%;
     --chart-4: 0 65% 55%;
     --chart-5: 205 60% 50%;
-    --font-sans: 'Vazirmatn', Tahoma, sans-serif;
-    --font-mono: 'Vazirmatn', ui-monospace, monospace;
+    --font-sans: 'Vazirmatn Variable', 'Vazirmatn', Tahoma, sans-serif;
+    --font-mono: 'Vazirmatn Variable', 'Vazirmatn', ui-monospace, monospace;
     --shadow-sm: 0 1px 2px 0 rgb(16 40 36 / 0.05);
     --shadow-md: 0 10px 30px -12px rgb(16 40 36 / 0.22);
   }

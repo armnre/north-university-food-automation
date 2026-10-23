@@ -80,6 +80,7 @@ export default function MenuPage() {
 }
 
 function OfferingCard({ o, inCart, onToggle }: { o: MenuOffering; inCart: boolean; onToggle: () => void }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const full = o.remaining <= 0;
   const pct = o.capacity ? Math.round(((o.capacity - o.remaining) / o.capacity) * 100) : 0;
   let action: React.ReactNode;
@@ -87,14 +88,24 @@ function OfferingCard({ o, inCart, onToggle }: { o: MenuOffering; inCart: boolea
   else if (!o.open) action = <Pill tone="muted">مهلت تمام شده</Pill>;
   else if (full) action = <Pill tone="danger">ظرفیت تکمیل</Pill>;
   else action = (
-    <Button size="sm" onClick={onToggle} variant={inCart ? 'outline' : 'default'} className={cn('h-10 rounded-xl px-4 transition-all', inCart && 'border-primary text-primary')}>
+    <Button size="sm" onClick={onToggle} variant={inCart ? 'outline' : 'default'} className={cn('h-11 rounded-xl px-4 transition-all', inCart && 'border-primary text-primary')}>
       {inCart ? <><Check className="ms-1 h-4 w-4" />در سبد</> : <><Plus className="ms-1 h-4 w-4" />افزودن</>}
     </Button>
   );
   return (
     <article className={cn('lift flex flex-col rounded-2xl border bg-card p-4 shadow-[var(--shadow-sm)] transition-colors', inCart && 'border-primary ring-2 ring-primary/15')}>
       <div className="flex items-start gap-3">
-        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-accent text-2xl">{MEAL_EMOJI[o.mealSlot] ?? '🍽️'}</span>
+        {o.imagePath && !imgFailed ? (
+          <img
+            src={o.imagePath}
+            alt={o.foodName}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="h-16 w-16 shrink-0 rounded-2xl border object-cover"
+          />
+        ) : (
+          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-accent text-2xl">{MEAL_EMOJI[o.mealSlot] ?? '🍽️'}</span>
+        )}
         <div className="min-w-0 flex-1">
           <span className="text-[11px] font-semibold text-primary">{MEALS[o.mealSlot]}</span>
           <h3 className="truncate text-base font-bold">{o.foodName}</h3>

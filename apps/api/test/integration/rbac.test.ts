@@ -79,12 +79,12 @@ const STAFF_ENDPOINTS: EndpointSpec[] = [
     },
   },
   { method: 'GET', path: '/api/v1/finance/ledger', allow: ['finance'] },
-  { method: 'GET', path: '/api/v1/finance/withdrawals', allow: ['finance', 'financeWrite', 'withdrawalReview'] },
+  { method: 'GET', path: '/api/v1/finance/payments', allow: ['finance'] },
   {
     method: 'POST',
-    path: `/api/v1/finance/withdrawals/${FAKE_UUID}/review`,
-    allow: ['withdrawalReview', 'financeWrite'],
-    body: { action: 'approve' },
+    path: `/api/v1/finance/payments/${FAKE_UUID}/resolve`,
+    allow: ['financeWrite'],
+    body: { action: 'mark_failed', reason: 'بررسی در پنل زرین‌پال انجام شد' },
   },
   { method: 'GET', path: '/api/v1/finance/reconcile', allow: ['finance', 'audit'] },
   { method: 'GET', path: '/api/v1/imports', allow: ['import'] },
@@ -139,8 +139,13 @@ const CUSTOMER_ENDPOINTS: EndpointSpec[] = [
   { method: 'GET', path: '/api/v1/me/notifications', allow: [] },
   { method: 'POST', path: '/api/v1/me/reservations', allow: [], body: { offeringId: FAKE_UUID, idempotencyKey: 'rbac-test-2' } },
   { method: 'POST', path: '/api/v1/me/checkout', allow: [], body: { items: [{ offeringId: FAKE_UUID }], idempotencyKey: 'rbac-test-3' } },
-  { method: 'POST', path: '/api/v1/me/wallet/topup', allow: [], body: { amountRial: 100000, returnTo: '/wallet' } },
-  { method: 'POST', path: '/api/v1/me/withdrawals', allow: [], body: { amountRial: 100000, iban: 'IR000000000000000000000000' } },
+  {
+    method: 'POST',
+    path: '/api/v1/payments/checkout/start',
+    allow: [],
+    body: { items: [{ offeringId: FAKE_UUID }], idempotencyKey: 'rbac-test-4' },
+  },
+  { method: 'POST', path: '/api/v1/payments/result', allow: [], body: { paymentId: FAKE_UUID } },
 ];
 
 beforeAll(async () => {

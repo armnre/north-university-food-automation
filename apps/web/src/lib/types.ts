@@ -1,15 +1,15 @@
 // Frontend view types mirroring endpoint outputs (endpoints return these shapes).
 export type MyReservation = {
-  id: string; code: string; status: string; priceAtBooking: number; createdAt: string; serviceDate: string; mealSlot: string;
-  foodName: string; cafeteriaName: string; deliveredAt: string | null; cancelDeadline: string | null; canCancel: boolean; qrToken: string | null;
+  id: string; code: string; status: string; priceRial: number; createdAt: string; serviceDate: string; mealSlot: string;
+  foodName: string; cafeteriaName: string; deliveredAt: string | null; cancelDeadline: string | null; qrToken: string | null;
   mealSlotTitle: string;
 };
 export type MyReservations = { today: string; reservations: MyReservation[] };
-export type WalletTx = { id: string; trackingCode: string; type: string; amountRial: number; reason: string; createdAt: string; runningBalance: number };
+export type WalletTx = { id: string; trackingCode: string; type: string; typeLabel?: string; amountRial: number; reason: string; createdAt: string; balanceAfter: number };
 export type Wallet = { balanceRial: number; transactions: WalletTx[] };
 export type MenuOffering = {
   id: string; serviceDate: string; mealSlot: string; mealSlotTitle: string; myPriceRial: number | null; status: string; foodName: string; foodDescription: string; cafeteriaName: string; priceRial: number; capacity: number;
-  remaining: number; notes: string; reserveDeadline: string | null; cancelDeadline: string | null; open: boolean; myReservationId: string | null; myStatus: string | null; slotTaken: boolean;
+  remaining: number; notes: string; reserveDeadline: string | null; cancelDeadline: string | null; open: boolean; myReservationId: string | null; myStatus: string | null; imagePath?: string | null;
 };
 export type StudentNotifs = { notifications: { id: string; title: string; body: string; createdAt: string; personal: boolean }[]; supportText: string; helpText: string };
 
@@ -31,10 +31,10 @@ export type Food = {
   defaultCapacity: number | null; calories: number | null; imagePath: string | null;
 };
 export type AdminReservation = {
-  id: string; code: string; status: string; priceAtBooking: number; createdAt: string; offeringId: string; serviceDate: string; mealSlot: string; foodName: string;
-  cafeteriaName: string; cafeteriaId: string; cancelDeadline: string | null; studentId: string; studentNumber: string; studentName: string; deliveredAt: string | null;
+  id: string; code: string; status: string; priceRial: number; createdAt: string; offeringId: string; serviceDate: string; mealSlot: string; foodName: string;
+  cafeteriaName: string; cafeteriaId: string; cancelDeadline: string | null; accountId: string; customerGroup: string; holderIdentifier: string; holderName: string; deliveredAt: string | null; canCancel: boolean;
 };
-export type ScanInfo = { reservationId: string; code: string; studentNumber: string; studentName: string; foodName: string; mealSlot: string; serviceDate: string };
+export type ScanInfo = { reservationId: string; code: string; holderIdentifier: string; holderName: string; foodName: string; mealSlot: string; mealSlotTitle: string; cafeteriaName: string; serviceDate: string };
 export type ScanResult = {
   state: 'ready' | 'delivered' | 'already' | 'cancelled' | 'invalid' | 'wrongCafeteria' | 'wrongDay' | 'expired' | 'outsideWindow' | 'noShow' | 'offlineConflict' | 'network';
   info: ScanInfo | null; message: string; deliveredAt: string | null; deliveredBy: string | null;

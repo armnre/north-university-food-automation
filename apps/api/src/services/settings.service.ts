@@ -61,8 +61,7 @@ export type NumericSettingKey =
   | 'noshowGraceMinutes'
   | 'scanWindowBeforeMinutes'
   | 'scanWindowAfterMinutes'
-  | 'minTopupRial'
-  | 'maxTopupRial'
+  | 'minGatewayPayableRial'
   | 'maxManualAdjustRial'
   | 'reminderHoursBeforeMeal';
 

@@ -1,151 +1,88 @@
-# PROJECT_STATE — وضعیت واقعی پروژه
+# PROJECT_STATE — وضعیت واقعی و نهایی پروژه
 
-> آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ · شاخه: `arena/51e0bded-north-university-food-automati`
-> این فایل وضعیت **واقعی** کار را ثبت می‌کند. هر چه «انجام شد» نوشته شده، اجرا و تست شده است؛
-> هر چه «انجام نشد» نوشته شده، با دلیل مشخص شده است.
+> آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (به وقت تهران) · شاخه: `arena/0e8be627-north-university-food-automati`
+> این فایل وضعیت **واقعی** کار را ثبت می‌کند. هر چه «انجام و اجرا شد» نوشته شده، واقعاً اجرا و راستی‌آزمایی شده است؛ هر چه به دلیل محدودیت محیط اجرا نشده، صریح و صادقانه مستند شده است.
 
-## ۱. معماری فعلی
+---
 
+## ۱. معماری فعلی نسخهٔ مستقل تولیدی
+
+```text
+apps/web              React 18 + Vite 8 + Tailwind 3 + Workbox PWA (فارسی/RTL، صفر لینک خارجی)
+apps/api              Fastify 5 + Drizzle ORM + PostgreSQL 16/15 + فرآیند مستقل worker.ts (Node >=22)
+packages/shared       نوع‌ها، اسکیماهای Zod، ماتریس RBAC، خطاها، محاسبات ریال/تومان و زمان تهران
+packages/components   کامپوننت‌های پایهٔ UI (Radix UI + Tailwind، با tsconfig اختصاصی)
+deploy/               اسکریپت‌های preflight، provision، build-release، deploy، backup، systemd و Plesk nginx
+docs/                 مستندات کامل بازنویسی‌شدهٔ نسخهٔ مستقل (DEPLOY, PAYMENTS, CANCELLATION, SECURITY, ...)
+scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screenshots.ts، import-zite-export.ts
+.github/workflows/    پایپ‌لاین CI روی Node 22 و ماتریس PostgreSQL 16 و 15 + Playwright E2E
 ```
-apps/web        React 18 + Vite 8 + Tailwind 3 (فرانت‌اند قبلی، بدون بازنویسی UI)
-apps/api        Fastify 5 + Drizzle ORM 0.45 + PostgreSQL 15 (TypeScript strict، ESM)
-packages/shared نوع‌ها، اسکیماهای Zod (قرارداد REST)، ماتریس RBAC، توابع دامنه‌ای
-packages/components فقط کامپوننت‌های UI واقعاً استفاده‌شده
-scripts/        import-zite-export.ts، fix-workspace-hoisting.mjs
-docs/           مستندات (API.md بازنویسی شد؛ بقیه در مرحلهٔ ۹ بازنویسی می‌شوند)
-```
 
-- وابستگی به Zite **کاملاً حذف** شد: `zitejs` از همهٔ package.jsonها، `zite.*.json`،
-  `src/api/*` (۳۷ endpoint زیت)، `src/server/*` و پلاگین‌های Vite.
-- لایه‌بندی بک‌اند: `routes` → `services` → `repositories` (منطق کسب‌وکار در route نیست).
-- Redis استفاده نمی‌شود؛ محدودیت نرخ ورود، کپچا و قفل‌ها در PostgreSQL پیاده شده‌اند.
+---
 
-## ۲. وضعیت مراحل
+## ۲. خلاصهٔ فازهای تکمیل‌شده روی این شاخه
 
-### مرحله ۱ — پایه و دیتابیس: **انجام شد**
+### فاز ۱ — تصمیم‌های محصولی A و C و بازطراحی کیف پول (B)
 
-- ورک‌اسپیس‌ها، `tsconfig.base.json` strict، eslint flat config، prettier، husky + lint-staged،
-  `docker-compose.dev.yml`، دو پیکربندی vitest (واحد/یکپارچه).
-- اسکیمای ۲۹ جدول با قیدهای واقعی (CHECK، UNIQUE، ایندکس یکتای جزئی
-  «یک رزرو فعال در هر (حساب، روز سرویس، وعده)»).
-- migration ورژن‌دار: `0000_init` (تولید با drizzle-kit) و `0001_triggers_and_grants`
-  (سفارشی): triggerهای append-only برای دفتر کل/ممیزی/تاریچه/تحویل، ممنوعیت حذف فیزیکی
-  ۱۹ جدول، constraint trigger تعویق‌پذیر «مجموع صفر هر تراکنش»، همگام‌سازی ستون‌های
-  denormalized رزرو، محافظت از تغییر روز/وعده/سلف آیتم منوی دارای رزرو،
-  ساخت نقش‌های `food_migrator`/`food_app` با GRANT/REVOKE و `statement_timeout`.
-- seed تولیدی idempotent (وعده‌ها، تنظیمات، سلف مرکزی) + seed دمو فقط با
-  `NODE_ENV=development` و `ALLOW_DEMO_SEED=true`.
-- **۳۱ تست یکپارچه** روی PostgreSQL ۱۵ واقعی همهٔ قیدهای بالا را تأیید می‌کنند
-  (شامل تست واقعی GRANTها با اتصال به نقش `food_app`).
-- ⚠️ `docker compose up` در این محیط **اجرا نشد** (Docker موجود نیست). به‌جای آن،
-  تست‌ها یک PostgreSQL ۱۵ واقعی را از بستهٔ npm `embedded-postgres` راه‌اندازی می‌کنند؛
-  `docker-compose.dev.yml` برای توسعه‌دهندگان دارای Docker نوشته شده ولی اجرا نشده است.
+- **تصمیم A (رزرو چندغذایی در یک وعده):** مهاجرت `0002_offering_level_unique.sql` ایندکس قدیمی سطح وعده را حذف و ایندکس یکتای جزئی `reservations_one_live_per_offering` روی `(account_id, offering_id) WHERE status IN ('Reserved', 'Delivered')` را جایگزین کرد؛ کد خطای `DUPLICATE_OFFERING` و رابط کاربری سبد چندغذایی پیاده‌سازی شد.
+- **تصمیم C (لغو رزرو):** `student_cancellation_enabled = false` و `noshow_refund = false` به عنوان پیش‌فرض تولیدی تثبیت شدند؛ مسیر HTTP و دکمهٔ لغو دانشجویی حذف شد، اما زیرساخت کامل لغو (`cancelReservationInternal`، لغو اداری با دلیل الزامی، بازپرداخت دسته‌ای `SoldOut`/`Cancelled` و شمارش مجزای `Cancelled` از `NoShow` در گزارش‌ها) حفظ و تست شد. انتخابگر سلف و مهلت لغو از فرم‌های منو مخفی و پیش‌فرض «سلف مرکزی» تنظیم گردید.
+- **حذف شارژ کیف پول و برداشت شبا:** مسیرهای شارژ مستقیم کیف پول و برداشت بانکی شبا حذف شدند، `DATA_ENCRYPTION_KEY` اختیاری شد و صفحهٔ کیف پول به نمایشگر «اعتبار بازپرداخت و گردش حساب» تبدیل گردید.
 
-### مرحله ۲ — احراز هویت، نشست و RBAC: **انجام شد**
+### فاز ۲ — پرداخت مستقیم درگاه زرین‌پال v4 و تسویهٔ اتمیک سبد
 
-- ورود دانشجو (شمارهٔ دانشجویی + کد ملی HMAC-SHA256 با pepper، `timingSafeEqual`،
-  اعتبارسنجی رقم کنترلی، نرمال‌سازی ارقام فارسی/عربی)، ورود کارکنان و کارمندان با
-  Argon2id + verify روی hash ساختگی برای نام کاربری ناموجود + rehash خودکار PBKDF2 قدیمی.
-- `GET /auth/me`، `logout`، `logout-all`، فهرست/ابطال نشست‌ها، `change-password`
-  (حداقل ۱۰ کاراکتر، نامساوی با نام کاربری، ابطال سایر نشست‌ها، تعویض اجباری در اولین ورود)،
-  `setup-status`/`setup-admin` با `SETUP_CODE` و CLI `npm run create-admin`.
-- محدودیت تلاش: قفل ۵ شکست/۱۵ دقیقه روی **(identifier_hash + IP)**، یکسان بودن رفتار
-  شناسهٔ موجود/ناموجود، کپچا از تلاش سوم (شمارندهٔ کلی شناسه)، `auth.suspicious` از ۳۰ شکست،
-  تشدید IP (۲۰۰ شکست) بدون مسدودسازی سخت، `getClientIp` با `TRUSTED_PROXY_HOPS`
-  از **انتهای** زنجیرهٔ `X-Forwarded-For`.
-- کپچای SVG یک‌بارمصرف (ساخت خود سامانه؛ فقط HMAC پاسخ ذخیره می‌شود).
-- نشست: توکن ۲۵۶ بیتی، فقط SHA-256 در دیتابیس، انقضای ۱۲/۸ ساعت، تمدید لغزان،
-  سقف مطلق ۷ روز، ابطال خودکار هنگام غیرفعال‌سازی/تغییر وضعیت/ریست/تغییر رمز.
-- RBAC: ماتریس مجوز در `packages/shared/src/permissions.ts` (تنها منبع حقیقت)،
-  محافظت همهٔ مسیرها با `requirePermission` در `preValidation` (پیش‌فرض: رد)،
-  سلسله‌مراتب ساخت حساب، تفکیک وظایف (مدیر ارشد `financeWrite` ندارد).
-- helmet + CSP سخت‌گیرانه (`default-src 'none'`)، `X-Frame-Options: DENY`، `Referrer-Policy`،
-  `Permissions-Policy` با `camera=(self)`، CORS خاموش، bodyLimit/timeout،
-  `@fastify/rate-limit` (حافظهٔ پروسه برای مسیرهای عمومی؛ مسیرهای حساس از env).
-- **۴۵ تست یکپارچه**: auth (۳۱) + ماتریس کامل نقش × endpoint (۱۴).
+- مهاجرت `0003_direct_checkout_payments.sql` و پیاده‌سازی کامل `POST /payments/checkout/start`، `GET /payments/zarinpal/callback` و `POST /payments/result`.
+- کسر خودکار اعتبار بازپرداخت قبلی، تسویهٔ فوری بدون درگاه در صورت `payable = 0` و مدیریت دقیق قانون حداقل ۱۰٬۰۰۰ ریال شاپرک (`min_gateway_payable_rial`).
+- استعلام اجباری `verify` سمت سرور حتی زمانی که `Status != OK` باشد، پذیرش idempotent کدهای `100` و `101`، تسویهٔ آیتم‌به‌آیتم سبد با `SAVEPOINT` (انتقال مبلغ آیتم‌های تکمیل‌ظرفیت‌شده به اعتبار کیف پول دانشجو) و قفل `NeedsReview` + هشدار و پنل تعیین‌تکلیف امور مالی در صورت خطای زیرساختی پس از تأیید بانک.
 
-### مرحله ۳ — پورت کامل endpointها: **انجام شد**
+### فاز ۳ — فرآیند مستقل پس‌زمینه (`apps/api/src/worker.ts`)
 
-- همهٔ ۴۳ متد endpoint قدیمی به REST منتقل شدند (جدول مطابقت در `docs/API.md`)
-  به‌علاوهٔ مسیرهای جدید برای ویژگی‌های کم‌شده.
-- رزرو در **یک تراکنش** با قفل ردیف حساب و وعده، افزایش اتمیک ظرفیت، کسر اتمیک موجودی،
-  دفتر کل دوطرفه با `balance_after` و idempotency، و نگاشت نقض ایندکس یکتا به
-  «برای این وعده قبلاً رزرو کرده‌اید». الگوی «insert-then-verify» کاملاً حذف شد.
-- سبد خرید بدون «اعتبار رایگان»: هر آیتم در تراکنش مستقل، گزارش کسری موجودی.
-- تحویل اتمیک (`UPDATE … WHERE status='Reserved' RETURNING`)، ثبت همهٔ تلاش‌ها در `deliveries`،
-  بازهٔ اسکن، صف آفلاین با `sha256(token)` و `client_event_id` یکتا، `OfflineConflict`.
-- مالی: شارژ/برداشت دستی با دلیل الزامی، سقف از تنظیمات، idempotency، قفل حساب؛
-  درگاه زرین‌پال پشت Feature Flag + adapter sandbox (فقط غیر production) + callback
-  idempotent + `NeedsReview` با هشدار به مدیر ارشد؛ برداشت وجه با شبا (mod-97 + AES-256-GCM).
-- لغو و بازپرداخت، لغو اداری، «تمام شد»/«لغو وعده» با بازپرداخت دسته‌ای ۱۰۰تایی،
-  NoShow با job، تنظیمات سیستم با اعتبارسنجی بازه و ممیزی قبل/بعد.
-- ایمپورت اکسل سمت سرور با `exceljs` (multipart، فقط xlsx، ≤۵MB، ≤۱۰٬۰۰۰ ردیف، بدون ماکرو)،
-  ثبت در یک تراکنش با قفل ردیف دسته، تعارض کد ملی با تأیید صریح، `fullSync` با `Removed`
-  و ابطال نشست‌ها، Undo فقط برای ردیف‌های جدید بدون فعالیت، پاک‌سازی ۷ روزه.
-- فرانت‌اند: `src/lib/api.ts` (کلاینت fetch تایپ‌شده + CSRF + رویداد ۴۰۱)،
-  `session.tsx` از `/auth/me` (حذف `sessionStorage`)، Vite proxy برای `/api`،
-  حذف `xlsx` از فرانت، بازنویسی Checkout برای حذف پول رایگان.
-- `scripts/import-zite-export.ts` با `--dry-run`، حذف `isDemo`، بررسی یکسانی pepper،
-  تبدیل دفتر کل تک‌طرفه به دوطرفه و گزارش تطبیق موجودی هر حساب.
-- **۵۱ تست یکپارچه** جدید (جریان‌های کسب‌وکار ۳۵ + ایمپورت ۱۶).
+- پیاده‌سازی زمان‌بند مستقل بر مبنای منطقهٔ زمانی `Asia/Tehran` با قفل مشورتی `pg_try_advisory_lock(20261023, lockId)`، ثبت تاریخچه در `job_runs`، لاگ ساخت‌یافته و خاموشی ایمن (`SIGTERM`/`SIGINT`):
+  - `markNoShows`، `reconcilePendingPayments` (هر ۱۵ دقیقه)، `deleteExpiredSessions`، `purgeLoginAttempts`، `deleteStaleCaptchas`، `cleanupImportRows` و `reconcileLedger`.
 
-### مرحله ۴ تا ۹: **انجام نشد** (منتظر پیام «ادامه»)
+### فاز ۴ — آپلود امن تصویر غذا
 
-مطابق صورت‌مسئله، کار پس از مرحلهٔ ۳ متوقف شد. بنابراین:
+- پیاده‌سازی `POST /api/v1/uploads/food-image` با مجوز `foods`، بررسی بایت‌های جادویی واقعی (`JPEG`/`PNG`/`WebP`)، سقف ۲ مگابایت، تغییر اندازه با `sharp` به ≤۱۲۰۰ پیکسل و حذف متادیتای EXIF همراه با مسیر جایگزین امن حذف متادیتا برای پردازنده‌های فاقد `AVX2` (مانند Xeon E5-2670 سرور دانشگاه)، سرو با کش بلندمدت از `/uploads/:fileName` و آپلودر همراه با پیش‌نمایش در `FoodsPage.tsx` و کارت‌های منو.
 
-- مرحله ۴ (قواعد کسب‌وکار تکمیلی/پرداخت واقعی/اعلان پیامکی): بخش‌هایی که پیش‌نیاز
-  مرحله ۳ بودند پیاده شده‌اند (لغو/بازپرداخت، SoldOut/Cancelled، درگاه پشت flag،
-  برداشت وجه، بازهٔ اسکن، NoShow، تنظیمات)؛ اما **صف پیامک کاوه‌نگار، یادآوری وعده،
-  UI اختصاصی شارژ/برداشت/کارمندان و QR تمام‌صفحه ساخته نشده‌اند**.
-- مرحله ۵ (worker): `src/worker.ts` **نوشته نشده**؛ تابع‌های jobها
-  (`markNoShows`, `reconcileLedger`, `reconcilePendingPayments`, `deleteExpiredSessions`,
-  `purgeLoginAttempts`, `deleteStaleCaptchas`, `cleanupImportRows`) آماده‌اند اما
-  پروسهٔ زمان‌بند و قفل `pg_try_advisory_lock` و جدول `job_runs` هنوز driver ندارند.
-- مرحله ۶ (گزارش‌ها/UI جدید/PWA): انجام نشد (صفحه‌های جدید، DataTable، PWA، آفلاین UI).
-- مرحله ۷ (تست بار، E2E Playwright، CI): انجام نشد. تست‌های واحد (۲۵) و یکپارچه (۱۲۷) نوشته و اجرا شدند.
-- مرحله ۸ (استقرار Plesk/systemd/nginx/backup): انجام نشد.
-- مرحله ۹ (بازنویسی همهٔ مستندات، ممیزی امنیتی نهایی، تگ v1.0.0): انجام نشد؛
-  فقط `docs/API.md` بازنویسی شد.
+### فاز ۵ — PWA فارسی/RTL، بلیط تمام‌صفحهٔ ۸ کاراکتری و بهینه‌سازی باندل
 
-## ۳. نتایج واقعی اجرا (در این محیط)
+- حذف کامل لینک‌های خارجی (فونت محلی `@fontsource-variable/vazirmatn`، لوگوی برداری و آیکن‌های داخلی سبز/طلایی دانشگاه، مانیفست فارسی/RTL و صفحهٔ آفلاین فارسی).
+- پیکربندی Workbox (`sw.js`) با استثنا کردن کامل `/api` و `/uploads` از کش، اعلان بروزرسانی نسخه و راهنمای نصب اندروید/iOS.
+- بازطراحی دیالوگ بلیط تمام‌صفحه با کد ۸ کاراکتری درشت **بدون پیشوند `R-`**، دکمهٔ کپی و راهنمای نور صفحه؛ پذیرش هر دو حالت با و بدون `R-` در پنل اپراتور.
+- بارگذاری تنبل مسیرها (`React.lazy`) و کاهش باندل اولیهٔ JS از ۱٫۱۸ مگابایت به **`79.02 kB` gzip** (`245.95 kB` خام).
 
-| فرمان                                              | نتیجه                                                               |
-| -------------------------------------------------- | ------------------------------------------------------------------- |
-| `npm run typecheck` (shared + api + web + scripts) | **۰ خطا**                                                           |
-| `npm run lint` (eslint flat)                       | **۰ خطا، ۰ هشدار**                                                  |
-| `npm run test` (واحد، vitest)                      | **۲۵/۲۵ موفق**                                                      |
-| `npm run test:integration` (PostgreSQL ۱۵ واقعی)   | **۱۲۷/۱۲۷ موفق** (۵ فایل)                                           |
-| `npm run build --workspace @food/api` (`tsc`)      | موفق → `apps/api/dist/server.js`                                    |
-| `vite build` (فرانت‌اند)                           | موفق → `apps/web/dist` (۱٫۱۸MB JS تک‌chunk؛ کاهش حجم در مرحلهٔ ۶)   |
-| `npm run test:e2e`                                 | **اجرا نشد** — Playwright/مرورگر نصب نیست (مرحلهٔ ۷)                |
-| `docker compose up`                                | **اجرا نشد** — Docker در این محیط موجود نیست                        |
-| تست بار (autocannon/k6)                            | **اجرا نشد** (مرحلهٔ ۷)؛ فقط تست رقابت ۵۰ درخواست هم‌زمان نوشته شده |
-| `npm run db:migrate` روی سرور واقعی                | **اجرا نشد** — سرور دانشگاه در دسترس نیست                           |
+### فاز ۶ و ۷ — امنیت، ارتقای Node >=22، رفع آسیب‌پذیری‌ها، آزمون بار و CI
 
-نکتهٔ محیطی: PostgreSQL در این sandbox با بستهٔ npm `embedded-postgres`
-(باینری‌های رسمی PG 15.18) اجرا می‌شود؛ بنابراین تست‌های یکپارچه روی
-**PostgreSQL واقعی** و نه mock اجرا شده‌اند.
+- ارتقای `engines.node` به `>=22.0.0` در هر ۵ پکیج، ارتقا به `Vitest 5.0.5` و صفر کردن کامل آسیب‌پذیری‌های `npm audit` (**`0 vulnerabilities`** در ۹۶۰ پکیج).
+- افزودن `scripts/check-no-secrets.mjs` (`npm run secrets:check`)، `scripts/loadtest.ts` (`autocannon`)، `apps/web/playwright.config.ts` + `apps/web/e2e/*` و پایپ‌لاین GitHub Actions در `.github/workflows/ci.yml` (Node 22 + ماتریس PostgreSQL 16 و 15 + Playwright).
+- رفع باگ مرزی نیمه‌شب تهران (`23:30..23:59 Asia/Tehran`) در `createDeliverableOffering` تست‌های یکپارچه.
 
-## ۴. موارد باز / تصمیم‌های لازم از دانشگاه
+### فاز ۸ — بستهٔ استقرار Plesk / Ubuntu 24.04 و بازنویسی کامل مستندات
 
-1. اطلاعات سرور (نسخهٔ Plesk/Ubuntu، Node، PostgreSQL، دامنه، SSL، منابع، سیاست بکاپ).
-2. `ZARINPAL_MERCHANT_ID` و تأیید سیاست پرداخت (تا آن زمان `ONLINE_PAYMENT_ENABLED=false`).
-3. سرویس پیامک (کاوه‌نگار) و **شمارهٔ موبایل دانشجویان** — جدول `students` ستون موبایل
-   ندارد (مطابق صورت‌مسئله)، بنابراین یادآوری پیامکی برای دانشجویان ممکن نیست و
-   فقط اعلان درون‌برنامه‌ای ارسال می‌شود.
-4. سیاست بازگشت وجه برای `NoShow` (فعلاً: بدون بازگشت وجه).
-5. تأیید ریسک «ورود دانشجو بدون رمز» (شمارهٔ دانشجویی + کد ملی کافی است).
-6. pepper کد ملی قدیمی (`ZITE_NATIONAL_ID_PEPPER`) برای انتقال داده؛ بدون آن
-   `national_id_hash` منتقل نمی‌شود و ورود دانشجویان نیازمند واردسازی مجدد است.
+- تولید اسکریپت‌های `deploy/{preflight.sh,provision.sh,build-release.sh,deploy.sh,backup.sh,healthcheck.sh,restore.md,nginx-vhost_nginx.conf.example}`، واحدهای سخت‌سازی‌شدهٔ `systemd` (`food-api`, `food-worker`, تایمرهای بکاپ و سلامت) و `logrotate` دقیقاً منطبق بر الگوی عملیاتی سرور دانشگاه شمال (`shomaldoc` روی ۳۰۸۰ دست‌نخورده، سرویس غذا روی `127.0.0.1:3101`، `/opt/food`، `/etc/food/app.env`).
+- نگارش `README.md`، `docs/DEPLOY.md`، `docs/PAYMENTS.md`، `docs/CANCELLATION.md` و بازنویسی کامل تمامی مستندات قدیمی `docs/*.md` بدون هیچ وابستگی به Zite.
 
-## ۵. بدهی‌های فنی شناخته‌شده
+---
 
-- `src/worker.ts` و زمان‌بندی jobها (مرحلهٔ ۵).
-- صفحه‌های جدید UI و PWA/آفلاین سمت کلاینت (مرحلهٔ ۶).
-- تست E2E، تست بار و CI (مرحلهٔ ۷).
-- `deploy/` (systemd، nginx، backup، deploy.sh) و `docs/DEPLOY.md` (مرحلهٔ ۸).
-- بازنویسی بقیهٔ مستندات `docs/` که هنوز از نسخهٔ Zite حرف می‌زنند
-  (`ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `RESERVATIONS.md`, `QR_DELIVERY.md`,
-  `EXCEL_IMPORT.md`, `WALLET_AND_LEDGER.md`, `RBAC.md`, `TESTING.md`, `OPERATIONS_RUNBOOK.md`).
-- باندل فرانت‌اند تک‌chunk و بزرگ است (code-splitting در مرحلهٔ ۶).
-- `packages/components` فاقد تست است (کامپوننت‌های shadcn دست‌نخورده).
+## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط
+
+| فرمان                              | وضعیت اجرا               | نتیجهٔ واقعی ثبت‌شده                                                                                                                                                                                                     |
+| ---------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run secrets:check`            | **اجرا شد**              | موفق (بررسی تمام فایل‌های مخزن؛ ۰ کلید/توکن/لینک خارجی غیرمجاز)                                                                                                                                                          |
+| `npm audit`                        | **اجرا شد**              | **`found 0 vulnerabilities`**                                                                                                                                                                                            |
+| `npm run lint`                     | **اجرا شد**              | **۰ خطا، ۰ هشدار**                                                                                                                                                                                                       |
+| `npm run typecheck`                | **اجرا شد**              | **۰ خطا** در هر ۴ ورک‌اسپیس و `tsconfig.scripts.json`                                                                                                                                                                    |
+| `npm run test`                     | **اجرا شد**              | **۲۵/۲۵ موفق** (Vitest 5.0.5)                                                                                                                                                                                            |
+| `npm run test:integration`         | **اجرا شد**              | **۱۳۲/۱۳۲ موفق** در ۸ فایل روی PostgreSQL ۱۵ واقعی (`embedded-postgres`)                                                                                                                                                 |
+| `npm run loadtest`                 | **اجرا شد**              | موفق: ۵۰۰ خواندن منو (`2xx=500`, `errors=0`, `125 req/s`)؛ رقابت ۵۰ درخواست روی ظرفیت ۱۰ (`موفق=10`, `رد=40`, `reserved_count=10`, تراز دفتر کل=`0`)؛ ۳۲ ورود هم‌زمان Argon2id (`2xx=32`, `errors=0`)                    |
+| `npm run build`                    | **اجرا شد**              | موفق (`@food/shared`, `@food/api`, `@food/web` PWA + `sw.js`؛ چانک اولیه `79.02 kB` gzip)                                                                                                                                |
+| `bash -n deploy/*.sh`              | **اجرا شد**              | موفق (صحت نحوی تمام اسکریپت‌های استقرار و پشتیبان‌گیری)                                                                                                                                                                  |
+| `npm run test:e2e` / `screenshots` | **در این محیط اجرا نشد** | پیکربندی و کد کامل در `apps/web/e2e/` و CI قرار دارد، اما باینری مرورگر Chromium در این محیط سندباکس نصب نیست و دسترسی دانلود باینری مرورگر مسدود است (در GitHub Actions CI اجرا می‌شود)                                 |
+| ممیزی Lighthouse                   | **در این محیط اجرا نشد** | به دلیل نبود باینری Chrome/Chromium روی سیستم‌عامل سندباکس قابل اجرا نبود؛ تمامی الزامات فنی PWA (مانیفست، آیکن‌ها، آفلاین، فونت محلی، باندل `<80 kB` gzip، ابعاد لمسی و کنتراست) پیاده‌سازی و با `pwa.test.ts` تست شدند |
+| `docker compose up`                | **در این محیط اجرا نشد** | Docker روی ماشین سندباکس نصب نیست؛ تست‌های دیتابیس با PostgreSQL واقعی `embedded-postgres` اجرا شدند و PostgreSQL 16 نیز در GitHub Actions CI پیکربندی شده است                                                           |
+| استقرار روی سرور Plesk دانشگاه     | **در این محیط اجرا نشد** | دسترسی SSH به سرور دانشگاه (`185.129.168.87`) از محیط سندباکس وجود ندارد؛ بستهٔ کامل اسکریپت‌ها و مستندات اجرایی در `deploy/` و `docs/DEPLOY.md` آمادهٔ اجرا توسط مدیر سرور است                                          |
+
+---
+
+## ۴. تصمیم معماری دربارهٔ مدل `Employee` (مشتریان کارمند / هیئت‌علمی)
+
+جدول `employees` و مسیرهای مرتبط با آن با مجوز محدود (`StudentAffairs` / `SuperAdmin`) در کد حفظ شده‌اند؛ زیرا دانشگاه علاوه بر دانشجویان، به اساتید و کارمندان اداری نیز با تعرفهٔ گروه کاربری مجزا (`Employee` / `Faculty` / `Contractor`) در سلف مرکزی غذا ارائه می‌دهد و حذف آن نیازمند شکستن قیدهای کلید خارجی حساب‌ها در آینده می‌بود. در عین حال در رابط کاربری ورود پیش‌فرض، تمرکز اصلی بر ورود دانشجویان و کارکنان اجرایی حفظ شده است.

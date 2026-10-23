@@ -1,15 +1,71 @@
 {
-  "name": "food-automation",
+  "name": "north-university-food-automation",
+  "version": "1.0.0",
   "private": true,
+  "description": "سامانه اتوماسیون تغذیه دانشگاه شمال — Node.js + PostgreSQL + React",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
   "workspaces": [
     "apps/*",
-    "automations/*",
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "zitejs check"
+    "dev": "npm run build --workspace @food/shared && concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace @food/api",
+    "dev:web": "npm run dev --workspace @food/web",
+    "dev:worker": "npm run dev:worker --workspace @food/api",
+    "build": "npm run build --workspace @food/shared && npm run build --workspace @food/api && npm run build --workspace @food/web",
+    "start": "npm run start --workspace @food/api",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "npm run build --workspace @food/shared && npm run typecheck --workspaces --if-present && tsc -p tsconfig.scripts.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run build --workspace @food/shared && vitest run --config vitest.unit.config.ts",
+    "test:watch": "vitest --config vitest.unit.config.ts",
+    "test:integration": "npm run build --workspace @food/shared && vitest run --config vitest.integration.config.ts",
+    "test:e2e": "npm run test:e2e --workspace @food/web",
+    "test:all": "npm run lint && npm run typecheck && npm run test && npm run test:integration",
+    "db:generate": "npm run db:generate --workspace @food/api",
+    "db:migrate": "npm run db:migrate --workspace @food/api",
+    "db:seed": "npm run db:seed --workspace @food/api",
+    "db:studio": "npm run db:studio --workspace @food/api",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d postgres",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "create-admin": "npm run create-admin --workspace @food/api",
+    "import:zite": "tsx --env-file-if-exists=.env scripts/import-zite-export.ts",
+    "loadtest": "npm run loadtest --workspace @food/api",
+    "screenshots": "npm run screenshots --workspace @food/web",
+    "audit:deps": "npm audit --omit=dev || true",
+    "secrets:check": "node scripts/check-no-secrets.mjs",
+    "postinstall": "node scripts/fix-workspace-hoisting.mjs",
+    "prepare": "husky"
   },
-  "dependencies": {
-    "zitejs": "0.9.136"
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.13.10",
+    "concurrently": "^10.0.6",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^3.2.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }

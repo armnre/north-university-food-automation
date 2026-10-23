@@ -109,6 +109,43 @@ else
   warn "ابزار Plesk در PATH نیست (در صورت سرور غیر Plesk نادیده بگیرید)"
 fi
 
+echo "=== ۶. بررسی ابزار رمزنگاری بکاپ (age) و مقصد پشتیبان خارج از سرور ==="
+ENV_FILE="${FOOD_ENV_FILE:-/etc/food/app.env}"
+if [[ -r "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+  set +a
+fi
+
+if command -v age >/dev/null 2>&1; then
+  pass "ابزار رمزنگاری age نصب است ($(age --version 2>/dev/null || echo installed))"
+else
+  warn "ابزار age هنوز نصب نیست (توسط provision.sh یا با دستور apt-get install -y age نصب می‌شود)"
+fi
+
+if [[ -n "${BACKUP_AGE_RECIPIENT:-}" ]]; then
+  if [[ "${BACKUP_AGE_RECIPIENT}" =~ ^age1[0-9a-z]{58}$ ]]; then
+    pass "کلید عمومی رمزنگاری بکاپ (BACKUP_AGE_RECIPIENT) معتبر است"
+  else
+    fail "فرمت BACKUP_AGE_RECIPIENT نامعتبر است (باید کلید عمومی age1... باشد)"
+  fi
+else
+  warn "متغیر BACKUP_AGE_RECIPIENT هنوز در ${ENV_FILE} تنظیم نشده است (پیش از فعال‌سازی بکاپ شبانه الزامی است)"
+fi
+
+PRIV_PREFIX="AGE-SECRET-KEY-"
+if { [[ -d /etc/food ]] && grep -rqF "${PRIV_PREFIX}" /etc/food 2>/dev/null; } ||
+   { [[ -d /var/backups/food ]] && grep -rqF "${PRIV_PREFIX}" /var/backups/food 2>/dev/null; }; then
+  fail "کلید خصوصی age روی سرور شناسایی شد! کلید خصوصی هرگز نباید روی سرور نگهداری شود."
+fi
+
+if [[ -n "${BACKUP_RSYNC_TARGET:-}" || -n "${BACKUP_SCP_TARGET:-}" ]]; then
+  pass "مقصد انتقال پشتیبان به خارج از سرور تنظیم شده است"
+else
+  warn "مقصد انتقال خارج از سرور (BACKUP_RSYNC_TARGET / BACKUP_SCP_TARGET) تنظیم نشده است — بدون نسخه‌ی خارج از سرور، بکاپ ناقص است!"
+fi
+
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "نتیجه: $FAILURES مورد خطای بحرانی شناسایی شد." >&2
   exit 1

@@ -157,6 +157,11 @@ WEB_DIST_PATH=/opt/food/current/apps/web/dist
 UPLOAD_DIR=/opt/food/shared/uploads
 FOOD_IMAGE_MAX_BYTES=2097152
 SHARP_DISABLE=false
+
+BACKUP_AGE_RECIPIENT=
+BACKUP_RETENTION_DAYS=14
+BACKUP_RSYNC_TARGET=
+BACKUP_SCP_TARGET=
 EOF
 
   chown root:food "${ENV_FILE}"
@@ -168,19 +173,22 @@ else
   echo "فایل ${ENV_FILE} از قبل موجود بود و دست‌نخورده باقی ماند."
 fi
 
-echo "=== ۶. نصب واحدهای systemd و تایمرهای پشتیبان‌گیری و پایش سلامت ==="
+echo "=== ۶. نصب واحدهای systemd و تایمرهای پشتیبان‌گیری، تمرین بازیابی و پایش سلامت ==="
 install -m 0644 "${SCRIPT_DIR}/systemd/food-api.service" /etc/systemd/system/food-api.service
 install -m 0644 "${SCRIPT_DIR}/systemd/food-worker.service" /etc/systemd/system/food-worker.service
 install -m 0644 "${SCRIPT_DIR}/systemd/food-backup.service" /etc/systemd/system/food-backup.service
 install -m 0644 "${SCRIPT_DIR}/systemd/food-backup.timer" /etc/systemd/system/food-backup.timer
+install -m 0644 "${SCRIPT_DIR}/systemd/food-restore-drill.service" /etc/systemd/system/food-restore-drill.service
+install -m 0644 "${SCRIPT_DIR}/systemd/food-restore-drill.timer" /etc/systemd/system/food-restore-drill.timer
 install -m 0644 "${SCRIPT_DIR}/systemd/food-health.service" /etc/systemd/system/food-health.service
 install -m 0644 "${SCRIPT_DIR}/systemd/food-health.timer" /etc/systemd/system/food-health.timer
 install -m 0644 "${SCRIPT_DIR}/logrotate/food" /etc/logrotate.d/food
 
 install -m 0750 "${SCRIPT_DIR}/backup.sh" "${FOOD_ROOT}/backup.sh"
+install -m 0750 "${SCRIPT_DIR}/restore-drill.sh" "${FOOD_ROOT}/restore-drill.sh"
 install -m 0750 "${SCRIPT_DIR}/healthcheck.sh" "${FOOD_ROOT}/healthcheck.sh"
 
 systemctl daemon-reload
-systemctl enable food-api.service food-worker.service food-backup.timer food-health.timer
+systemctl enable food-api.service food-worker.service food-backup.timer food-restore-drill.timer food-health.timer
 
 echo "=== آماده‌سازی اولیه کامل شد. اکنون بستهٔ انتشار را با deploy/deploy.sh مستقر کنید. ==="

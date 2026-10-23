@@ -19,17 +19,17 @@
 
 ## ۲. معماری چیدمان فایل‌ها و پورت‌ها در سرور
 
-| مؤلفه                                | مسیر / مقدار                                                                        | مالک و مجوز                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------- |
-| کاربر سیستمی اجرا                    | `food:food` (`/usr/sbin/nologin`)                                                   | بدون دسترسی شل                            |
-| باینری ایزولهٔ Node 22 LTS           | `/opt/food/node/current/bin/node`                                                   | `root:root` (`0755`)                      |
-| نسخه‌های انتشار و لینک فعال          | `/opt/food/releases/<timestamp>` ← `/opt/food/current`                              | `root:root` (`0755`)                      |
-| تصاویر آپلودشدهٔ غذا                 | `/opt/food/shared/uploads`                                                          | `food:food` (`0750`)                      |
-| فایل متغیرهای محیطی و اسرار          | `/etc/food/app.env`                                                                 | `root:food` (`0640`)                      |
-| پشتیبان‌های روزانه (۱۴ روز نگه‌داری) | `/var/backups/food`                                                                 | `root:root` (`0700` پوشه، `0600` فایل‌ها) |
-| پورت داخلی سرویس API                 | `127.0.0.1:3101` (`TRUSTED_PROXY_HOPS=1`)                                           | فقط قابل دسترس از loopback محلی           |
-| دیتابیس و نقش‌های PostgreSQL         | دیتابیس `food_automation`، نقش مهاجرت `food_migrator`، نقش اجرایی `food_app`        | جداسازی کامل DDL و DML                    |
-| واحدهای systemd                      | `food-api.service`، `food-worker.service`، `food-backup.timer`، `food-health.timer` | سخت‌سازی‌شده (`ProtectSystem=strict`)     |
+| مؤلفه                                | مسیر / مقدار                                                                                                    | مالک و مجوز                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| کاربر سیستمی اجرا                    | `food:food` (`/usr/sbin/nologin`)                                                                               | بدون دسترسی شل                            |
+| باینری ایزولهٔ Node 22 LTS           | `/opt/food/node/current/bin/node`                                                                               | `root:root` (`0755`)                      |
+| نسخه‌های انتشار و لینک فعال          | `/opt/food/releases/<timestamp>` ← `/opt/food/current`                                                          | `root:root` (`0755`)                      |
+| تصاویر آپلودشدهٔ غذا                 | `/opt/food/shared/uploads`                                                                                      | `food:food` (`0750`)                      |
+| فایل متغیرهای محیطی و اسرار          | `/etc/food/app.env`                                                                                             | `root:food` (`0640`)                      |
+| پشتیبان‌های روزانه (۱۴ روز نگه‌داری) | `/var/backups/food`                                                                                             | `root:root` (`0700` پوشه، `0600` فایل‌ها) |
+| پورت داخلی سرویس API                 | `127.0.0.1:3101` (`TRUSTED_PROXY_HOPS=1`)                                                                       | فقط قابل دسترس از loopback محلی           |
+| دیتابیس و نقش‌های PostgreSQL         | دیتابیس `food_automation`، نقش مهاجرت `food_migrator`، نقش اجرایی `food_app`                                    | جداسازی کامل DDL و DML                    |
+| واحدهای systemd                      | `food-api.service`، `food-worker.service`، `food-backup.timer`، `food-restore-drill.timer`، `food-health.timer` | سخت‌سازی‌شده (`ProtectSystem=strict`)     |
 
 ---
 
@@ -153,6 +153,17 @@ sudo bash -c 'set -a && . /etc/food/app.env && set +a && cd /opt/food/current &&
 4. وضعیت سرویس‌ها و تایمر پشتیبان‌گیری را بررسی کنید:
 
 ```bash
-systemctl status food-api.service food-worker.service food-backup.timer food-health.timer
+systemctl status food-api.service food-worker.service food-backup.timer food-restore-drill.timer food-health.timer
 journalctl -u food-api.service -u food-worker.service -n 50 --no-pager
 ```
+
+---
+
+## ۶. پشتیبان‌گیری رمزنگاری‌شدهٔ `age`، انتقال خارج از سرور و تمرین بازیابی
+
+> **هشدار حیاتی: بدون نسخه‌ی خارج از سرور، بکاپ ناقص است!**
+> نگهداری بکاپ صرفاً روی دیسک همان سرور در برابر خرابی سخت‌افزار یا باج‌افزار محافظتی ایجاد نمی‌کند. حتماً انتقال خارج از سرور (`BACKUP_RSYNC_TARGET` / `BACKUP_SCP_TARGET` یا کشیدن شبانه از سرور بکاپ مستقل) را فعال کنید.
+
+1. روی ایستگاه امن خارج از سرور جفت‌کلید `age` بسازید (`age-keygen -o food-backup-master.key`)، کلید خصوصی را در گاوصندوق خارج از سرور نگه دارید و **فقط کلید عمومی (`age1...`)** را در `BACKUP_AGE_RECIPIENT` داخل `/etc/food/app.env` قرار دهید.
+2. تایمر `food-backup.timer` هر شب ساعت `03:30` اسکریپت `/opt/food/backup.sh` را اجرا می‌کند: دامپ PostgreSQL با `pg_restore --list` راستی‌آزمایی شده، با کلید عمومی `age` رمزنگاری می‌شود (`.dump.age`)، چک‌سام `.sha256` تولید و بررسی می‌گردد، نسخه‌های قدیمی‌تر از ۱۴ روز پاک می‌شوند و در صورت تنظیم مقصد، به خارج از سرور ارسال می‌گردند.
+3. تایمر ماهانهٔ `food-restore-drill.timer` اسکریپت `/opt/food/restore-drill.sh` را اجرا می‌کند تا بازیابی واقعی روی دیتابیس موقت `food_restore_test`، شمارش جدول‌ها، تراز صفر دفتر کل، برابری موجودی حساب‌ها و سلامت FKها به صورت خودکار آزمایش شود. جزئیات کامل در `deploy/restore.md` مستند شده است.

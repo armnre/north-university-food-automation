@@ -38,6 +38,15 @@ else
   fail "فضای خالی دیسک روی /opt کمتر از ۱۰ گیگابایت است (${FREE_GB}GB)"
 fi
 
+BACKUP_CHECK_DIR="/var/backups"
+[[ -d "${BACKUP_CHECK_DIR}" ]] || BACKUP_CHECK_DIR="/"
+FREE_BACKUP_GB="$(df -BG "${BACKUP_CHECK_DIR}" 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || echo 0)"
+if [[ "${FREE_BACKUP_GB:-0}" -ge 5 ]]; then
+  pass "فضای خالی مسیر پشتیبان (${BACKUP_CHECK_DIR}): حدود ${FREE_BACKUP_GB}GB"
+else
+  fail "فضای خالی مسیر پشتیبان (${BACKUP_CHECK_DIR}) کمتر از ۵ گیگابایت است (${FREE_BACKUP_GB}GB)"
+fi
+
 CPU_MODEL="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | xargs || echo unknown)"
 HAS_AVX2="$(grep -m1 -o 'avx2' /proc/cpuinfo 2>/dev/null || true)"
 pass "پردازنده: $CPU_MODEL (AVX2=${HAS_AVX2:-no})"
@@ -66,7 +75,14 @@ fi
 
 if command -v psql >/dev/null 2>&1 && id postgres >/dev/null 2>&1; then
   PG_VER="$(sudo -u postgres psql -Atqc 'SHOW server_version;' 2>/dev/null || echo unknown)"
-  pass "نسخهٔ PostgreSQL: ${PG_VER}"
+  PG_VER_NUM="$(sudo -u postgres psql -Atqc 'SHOW server_version_num;' 2>/dev/null || echo 0)"
+  if [[ "${PG_VER_NUM}" =~ ^[0-9]+$ ]] && [[ "${PG_VER_NUM}" -ge 150000 ]]; then
+    pass "نسخهٔ PostgreSQL معتبر است (>=15): ${PG_VER}"
+  else
+    fail "نسخهٔ PostgreSQL باید حداقل ۱۵ باشد (فعلی: ${PG_VER})"
+  fi
+else
+  warn "ابزار psql یا کاربر postgres برای بررسی دقیق نسخه در دسترس نیست"
 fi
 
 echo "=== ۴. بررسی Node.js اختصاصی ۲۲ و ماژول‌های بومی (argon2 / sharp) ==="
@@ -94,12 +110,28 @@ if [[ -x "$NODE_BIN" ]]; then
     warn "نسخهٔ استقراریافته در $RELEASE_DIR هنوز وجود ندارد؛ تست argon2/sharp پس از استخراج بسته در deploy.sh انجام خواهد شد."
   fi
 else
-  warn "باینری $NODE_BIN هنوز نصب نشده است (توسط provision.sh نصب می‌شود)."
+  if command -v node >/dev/null 2>&1; then
+    SYS_NODE_VER="$(node -v 2>/dev/null || echo none)"
+    if [[ "${SYS_NODE_VER}" =~ ^v2[2-9]\. ]]; then
+      pass "باینری Node.js سیستم نسخهٔ معتبر دارد (${SYS_NODE_VER})؛ در تولید، provision.sh مسیر ایزولهٔ ${NODE_BIN} را نیز می‌سازد."
+    else
+      warn "باینری ایزولهٔ ${NODE_BIN} هنوز نصب نشده و Node سیستمی قدیمی است (${SYS_NODE_VER} < 22)؛ حتماً provision.sh را اجرا کنید."
+    fi
+  else
+    warn "باینری ${NODE_BIN} هنوز نصب نشده است (توسط provision.sh نصب می‌شود)."
+  fi
 fi
 
 echo "=== ۵. بررسی nginx و Plesk ==="
 if command -v nginx >/dev/null 2>&1; then
   pass "باینری nginx موجود است ($(nginx -v 2>&1))"
+  if [[ "${EUID}" -eq 0 ]]; then
+    if nginx -t >/dev/null 2>&1; then
+      pass "آزمون پیکربندی فعلی nginx (nginx -t) معتبر است"
+    else
+      fail "پیکربندی فعلی nginx خطا دارد (nginx -t ناموفق بود)؛ پیش از ادامه بررسی کنید!"
+    fi
+  fi
 else
   fail "nginx یافت نشد"
 fi

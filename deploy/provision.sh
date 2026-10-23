@@ -25,6 +25,13 @@ PUBLIC_URL="${PUBLIC_BASE_URL:-https://dining.example.edu}"
 API_PORT="${PORT:-3101}"
 NODE_TARBALL="${NODE_TARBALL:-}"
 
+echo "=== ۰. نصب بسته‌های پایهٔ سیستمی (age، rsync، xz-utils، curl، gnupg) بدون تغییر Node سیستمی ==="
+if command -v apt-get >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y --no-install-recommends age ca-certificates curl gnupg rsync xz-utils
+fi
+
 echo "=== ۱. ایجاد کاربر و گروه سیستمی بدون شل ورود (food) ==="
 if ! getent group food >/dev/null; then
   groupadd --system food
@@ -47,12 +54,54 @@ mkdir -p "${BACKUP_DIR}"
 chown root:root "${BACKUP_DIR}"
 chmod 0700 "${BACKUP_DIR}"
 
-echo "=== ۳. نصب ایزولهٔ Node.js 22 LTS در /opt/food/node/current ==="
-if [[ -x "${FOOD_ROOT}/node/current/bin/node" ]] && "${FOOD_ROOT}/node/current/bin/node" -v | grep -qE '^v2[2-9]\.'; then
-  echo "Node.js 22 قبلاً نصب شده است: $("${FOOD_ROOT}/node/current/bin/node" -v)"
+echo "=== ۳. نصب ایزولهٔ Node.js 22 LTS با راستی‌آزمایی SHA-256 (بدون curl | bash) ==="
+verify_node_sha256() {
+  local archive_path="$1"
+  local archive_name
+  archive_name="$(basename "${archive_path}")"
+  local expected_sha="${NODE_EXPECTED_SHA256:-}"
+
+  if [[ -z "${expected_sha}" && -r "${archive_path}.sha256" ]]; then
+    expected_sha="$(awk '{print $1}' "${archive_path}.sha256" | head -n1)"
+  fi
+  if [[ -z "${expected_sha}" && -n "${NODE_SHASUMS_FILE:-}" && -r "${NODE_SHASUMS_FILE}" ]]; then
+    expected_sha="$(awk -v f="${archive_name}" '$2 == f || $2 == "*"f {print $1}' "${NODE_SHASUMS_FILE}" | head -n1)"
+  fi
+  if [[ -z "${expected_sha}" ]]; then
+    echo "خطا: چک‌سام SHA-256 برای ${archive_name} یافت نشد! فایل ${archive_path}.sha256 یا متغیر NODE_EXPECTED_SHA256 را تامین کنید." >&2
+    exit 1
+  fi
+
+  local actual_sha
+  actual_sha="$(sha256sum "${archive_path}" | awk '{print $1}')"
+  if [[ "${actual_sha}" != "${expected_sha}" ]]; then
+    echo "خطای امنیتی: عدم تطابق SHA-256 آرشیو Node.js! expected=${expected_sha} actual=${actual_sha}" >&2
+    exit 1
+  fi
+  echo "  [OK] صحت چک‌سام SHA-256 آرشیو Node.js تأیید شد (${actual_sha})."
+}
+
+if [[ "${INSTALL_NODESOURCE_APT:-false}" == "true" ]]; then
+  # حالت اختیاری مخصوص سرورهای اختصاصی فاقد Plesk: مخزن رسمی امضاشدهٔ NodeSource با کلید GPG (هرگز بدون curl | bash)
+  install -m 0755 -d /etc/apt/keyrings
+  TMP_GPG="$(mktemp /tmp/nodesource.gpg.XXXXXX)"
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o "${TMP_GPG}"
+  install -m 0644 "${TMP_GPG}" /etc/apt/keyrings/nodesource.gpg
+  rm -f "${TMP_GPG}"
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+    >/etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
+  apt-get install -y --no-install-recommends nodejs
+  mkdir -p "${FOOD_ROOT}/node/system-node22/bin"
+  ln -sfn /usr/bin/node "${FOOD_ROOT}/node/system-node22/bin/node"
+  ln -sfn /usr/bin/npm "${FOOD_ROOT}/node/system-node22/bin/npm"
+  ln -sfn "${FOOD_ROOT}/node/system-node22" "${FOOD_ROOT}/node/current"
+elif [[ -x "${FOOD_ROOT}/node/current/bin/node" ]] && "${FOOD_ROOT}/node/current/bin/node" -v | grep -qE '^v2[2-9]\.'; then
+  echo "Node.js 22+ قبلاً نصب شده است: $("${FOOD_ROOT}/node/current/bin/node" -v)"
 else
   if [[ -n "${NODE_TARBALL}" && -f "${NODE_TARBALL}" ]]; then
     echo "نصب Node.js 22 از فایل آرشیو محلی: ${NODE_TARBALL}"
+    verify_node_sha256 "${NODE_TARBALL}"
     TMP_NODE_DIR="$(mktemp -d "${FOOD_ROOT}/node/extract.XXXXXX")"
     tar -xf "${NODE_TARBALL}" -C "${TMP_NODE_DIR}" --strip-components=1
     NODE_VER="$("${TMP_NODE_DIR}/bin/node" -v)"
@@ -63,20 +112,43 @@ else
   else
     NODE_VERSION="${NODE_VERSION:-v22.22.3}"
     ARCHIVE="node-${NODE_VERSION}-linux-x64.tar.xz"
-    DOWNLOAD_URL="${NODE_MIRROR_URL:-https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}}"
-    echo "دانلود Node.js ${NODE_VERSION} از ${DOWNLOAD_URL} ..."
-    echo "نکته: اگر سرور دسترسی مستقیم به nodejs.org ندارد، فایل ${ARCHIVE} را به سرور منتقل کرده و با NODE_TARBALL=/path/to/${ARCHIVE} اجرا کنید."
+    BASE_DIST_URL="${NODE_MIRROR_BASE_URL:-https://nodejs.org/dist/${NODE_VERSION}}"
+    echo "دانلود رسمی Node.js ${NODE_VERSION} و فایل SHASUMS256.txt از ${BASE_DIST_URL} ..."
+    echo "نکته: اگر سرور دسترسی مستقیم به nodejs.org ندارد، فایل‌های ${ARCHIVE} و SHASUMS256.txt را منتقل کرده و با NODE_TARBALL و NODE_SHASUMS_FILE اجرا کنید."
     TMP_ARCHIVE="$(mktemp "/tmp/${ARCHIVE}.XXXXXX")"
-    curl -fsSL --connect-timeout 15 --max-time 300 "${DOWNLOAD_URL}" -o "${TMP_ARCHIVE}"
+    TMP_SHASUMS="$(mktemp "/tmp/SHASUMS256.txt.XXXXXX")"
+    curl -fsSL --connect-timeout 15 --max-time 300 "${BASE_DIST_URL}/${ARCHIVE}" -o "${TMP_ARCHIVE}"
+    curl -fsSL --connect-timeout 15 --max-time 60 "${BASE_DIST_URL}/SHASUMS256.txt" -o "${TMP_SHASUMS}"
+
+    EXPECTED_FROM_LIST="$(awk -v f="${ARCHIVE}" '$2 == f || $2 == "*"f {print $1}' "${TMP_SHASUMS}" | head -n1)"
+    if [[ -z "${EXPECTED_FROM_LIST}" ]]; then
+      rm -f "${TMP_ARCHIVE}" "${TMP_SHASUMS}"
+      echo "خطا: مدخل ${ARCHIVE} در SHASUMS256.txt یافت نشد!" >&2
+      exit 1
+    fi
+    if [[ -n "${NODE_EXPECTED_SHA256:-}" && "${NODE_EXPECTED_SHA256}" != "${EXPECTED_FROM_LIST}" ]]; then
+      rm -f "${TMP_ARCHIVE}" "${TMP_SHASUMS}"
+      echo "خطای امنیتی: مغایرت NODE_EXPECTED_SHA256 با SHASUMS256.txt!" >&2
+      exit 1
+    fi
+    NODE_EXPECTED_SHA256="${EXPECTED_FROM_LIST}" verify_node_sha256 "${TMP_ARCHIVE}"
+
     DEST_NODE_DIR="${FOOD_ROOT}/node/node-${NODE_VERSION}-linux-x64"
     rm -rf "${DEST_NODE_DIR}"
     mkdir -p "${DEST_NODE_DIR}"
     tar -xJf "${TMP_ARCHIVE}" -C "${DEST_NODE_DIR}" --strip-components=1
-    rm -f "${TMP_ARCHIVE}"
+    rm -f "${TMP_ARCHIVE}" "${TMP_SHASUMS}"
     ln -sfn "${DEST_NODE_DIR}" "${FOOD_ROOT}/node/current"
   fi
-  echo "Node.js آماده شد: $("${FOOD_ROOT}/node/current/bin/node" -v)"
 fi
+
+# بررسی قطعی نسخهٔ Node پس از نصب (رد فوری نسخه‌های قدیمی مانند Node 18)
+INSTALLED_NODE_VER="$("${FOOD_ROOT}/node/current/bin/node" -v 2>/dev/null || echo none)"
+if [[ ! "${INSTALLED_NODE_VER}" =~ ^v2[2-9]\. ]]; then
+  echo "خطا: نسخهٔ Node نصب‌شده در ${FOOD_ROOT}/node/current باید >=22 باشد، اما '${INSTALLED_NODE_VER}' گزارش شد!" >&2
+  exit 1
+fi
+echo "  [OK] نسخهٔ نهایی Node.js تأیید شد: ${INSTALLED_NODE_VER}"
 
 echo "=== ۴. ساخت ایمن نقش‌ها و دیتابیس PostgreSQL (بدون دست زدن به سایر دیتابیس‌ها) ==="
 MIGRATOR_PASS="$(openssl rand -hex 24)"

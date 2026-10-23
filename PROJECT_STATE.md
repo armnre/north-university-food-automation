@@ -92,6 +92,12 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 - مستندسازی کامل انتقال خارج از سرور (`rsync`/`scp` و الگوی Pull امن) در `deploy/restore.md` و `docs/DEPLOY.md` همراه با هشدار صریح «بدون نسخه‌ی خارج از سرور، بکاپ ناقص است» در مستندات، `backup.sh` و `preflight.sh`.
 - ایجاد اسکریپت `deploy/restore-drill.sh` (بازیابی ایزوله به `food_restore_test`، بررسی شمارش جدول‌ها، جمع صفر دفتر کل، برابری موجودی حساب‌ها با آرتیکل‌ها و سلامت FKها، پاک‌سازی دیتابیس موقت و ثبت نتیجه در `journald`) به‌همراه تایمر ماهانهٔ `deploy/systemd/food-restore-drill.{service,timer}` و تست‌های واحد خودکار در `apps/api/test/unit/deploy-backup.test.ts`.
 
+### تکمیل نهایی — گام ۶ (سخت‌سازی اسکریپت‌های استقرار Ubuntu 24.04 / Plesk، لاگ تست واقعی و کتابچهٔ راهبر)
+
+- ارتقای `deploy/provision.sh` با راستی‌آزمایی اجباری چک‌سام `SHA-256` آرشیو رسمی Node 22 LTS (از `SHASUMS256.txt` یا فایل محلی، و مسیر اختیاری کلید GPG امضاشدهٔ NodeSource بدون `curl | bash`) و بررسی قطعی نسخهٔ Node پس از نصب (`>=22`).
+- ارتقای `deploy/preflight.sh` برای بررسی نسخهٔ عددی PostgreSQL (`>=15`)، فضای خالی مسیر پشتیبان (`/var/backups`)، آزمون `nginx -t`، بررسی `age`/`BACKUP_AGE_RECIPIENT` و هشدار صریح نبود مقصد بکاپ برون‌سروری.
+- اجرای واقعی ساخت بستهٔ انتشار تولیدی (`deploy/build-release.sh` -> بستهٔ `53 MB` با `0 vulnerabilities`) و راه‌اندازی مستقل آن با `NODE_ENV=production` و `SERVE_STATIC=true` روی PostgreSQL واقعی؛ ثبت کامل خروجی‌ها و موارد «اجرا نشد» در `docs/DEPLOY_TEST_LOG.md`، نگارش کتابچهٔ راهبر سرور در `deploy/ADMIN_RUNBOOK_FA.md` و چک‌لیست بهره‌برداری در `docs/GO_LIVE.md`.
+
 ---
 
 ## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط

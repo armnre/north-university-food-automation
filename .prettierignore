@@ -1,0 +1,29 @@
+# Pre-existing frontend code keeps its current formatting on purpose:
+# re-printing it would bury the real changes (Zite removal + API layer) in a
+# whitespace-only diff. Everything else in the repo IS format-checked.
+apps/web/
+packages/components/
+
+# Build output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Never commit data, secrets or generated docs assets
+.env
+.env.*
+!.env.example
+secrets.env
+*.pem
+*.key
+*.p12
+pgdata/
+.tmp/
+tmp/
+
+# Tooling caches
+.playwright-cli/
+playwright-report/
+test-results/
+node_modules/

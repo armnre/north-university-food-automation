@@ -11,7 +11,7 @@
 - **حافظه و دیسک:** حدود `9.7 GiB` رم (`~8.1 GiB` آزاد) + `4 GiB` swap و حدود `81 GB` فضای خالی XFS؛ منطقهٔ زمانی `Asia/Tehran`
 - **وب‌سرور و پنل:** Plesk با `nginx` در جلوی Apache
 - **سرویس‌های همسایه (خط قرمز عملیاتی):**
-  - سرویس `shomaldoc` روی پورت `3080` و سایت استاتیک `nezarat.shomal.ac.ir` روی همین سرور فعال هستند. **هرگز** سرویس‌ها، دیتابیس‌ها، Node اختصاصی یا تنظیمات nginx آن‌ها را ویرایش یا ری‌استارت نکنید.
+  - سرویس `shomaldoc` روی پورت `3080` و سایت‌های استاتیک دیگر (مانند `portal.example.edu`) روی همین سرور فعال هستند. **هرگز** سرویس‌ها، دیتابیس‌ها، Node اختصاصی یا تنظیمات nginx آن‌ها را ویرایش یا ری‌استارت نکنید.
   - **هرگز** از افزونهٔ _Plesk Node.js Toolkit_ استفاده نکنید و Node سیستمی (`v18.19.1`) را تغییر ندهید.
   - **PostgreSQL `16.15`** به صورت مشترک روی `127.0.0.1:5432` و `::1:5432` در حال اجراست؛ هرگز دیتابیس‌ها یا نقش‌های موجود را تغییر ندهید و سرویس `postgresql` را ری‌استارت نکنید.
 
@@ -37,19 +37,19 @@
 
 کد سامانه هیچ دامنه‌ای را هاردکد نکرده و صرفاً از متغیر `PUBLIC_BASE_URL` در `/etc/food/app.env` پیروی می‌کند. دو گزینه روی این سرور وجود دارد:
 
-### گزینهٔ الف (توصیه‌شده برای راه‌اندازی فوری): `dining.shomal.ac.ir`
+### گزینهٔ الف (توصیه‌شده برای راه‌اندازی فوری): زیردامنهٔ دانشگاهی (`dining.example.edu` / `<YOUR_SUBDOMAIN>`)
 
-1. گواهی وایلدکارد معتبر دانشگاه (`wildcard-shomal-2026` روی `*.shomal.ac.ir`) از قبل روی سرور موجود است.
-2. یک رکورد `A` برای `dining.shomal.ac.ir` به آدرس IP سرور (`185.129.168.87`) ثبت کنید.
-3. در پنل Plesk زیردامنهٔ `dining.shomal.ac.ir` را ایجاد کرده، گواهی `wildcard-shomal-2026` و گزینهٔ _Permanent SEO-safe 301 redirect from HTTP to HTTPS_ را فعال کنید.
-4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://dining.shomal.ac.ir` را قرار دهید.
+1. در صورت وجود گواهی وایلدکارد معتبر دانشگاه (`*.example.edu`) روی سرور، می‌توانید مستقیماً از آن استفاده کنید.
+2. یک رکورد `A` برای دامنهٔ سامانه (`<YOUR_SUBDOMAIN>`) به آدرس IP سرور (`<SERVER_IP>`) ثبت کنید.
+3. در پنل Plesk زیردامنهٔ موردنظر را ایجاد کرده، گواهی TLS و گزینهٔ _Permanent SEO-safe 301 redirect from HTTP to HTTPS_ را فعال کنید.
+4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://dining.example.edu` (دامنهٔ واقعی خود) را قرار دهید.
 
-### گزینهٔ ب (دامنهٔ مستقل): `diningshomal.ir`
+### گزینهٔ ب (دامنهٔ مستقل): دامنهٔ مجزا (`food.example.org` / `<YOUR_DOMAIN>`)
 
-1. دامنهٔ `diningshomal.ir` (شناسهٔ دامنهٔ ۲ در Plesk روی IP `185.129.168.87`) در حال حاضر فاقد رکوردهای فعال DNS (`NS` / `A`) در ایرنیک است.
-2. ابتدا در پنل ایرنیک، نیم‌سرورها یا رکورد `A` دامنهٔ `diningshomal.ir` را به `185.129.168.87` متصل کنید و از انتشار سراسری DNS با `dig +short A diningshomal.ir` مطمئن شوید.
-3. سپس در Plesk گواهی رایگان Let's Encrypt (یا گواهی تجاری واردشده) را برای `diningshomal.ir` صادر و فعال کنید.
-4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://diningshomal.ir` را قرار دهید.
+1. اگر دامنهٔ مستقل روی IP سرور (`<SERVER_IP>`) تعریف شده است، ابتدا از فعال بودن رکوردهای DNS (`NS` / `A`) مطمئن شوید.
+2. نیم‌سرورها یا رکورد `A` دامنه را به `<SERVER_IP>` متصل کنید و از انتشار سراسری DNS با `dig +short A <YOUR_DOMAIN>` مطمئن شوید.
+3. سپس در Plesk گواهی رایگان Let's Encrypt (یا گواهی تجاری واردشده) را برای دامنه صادر و فعال کنید.
+4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://food.example.org` (دامنهٔ واقعی خود) را قرار دهید.
 
 > **نکتهٔ مهم درگاه زرین‌پال:** دامنهٔ ثبت‌شده در پنل پذیرندگان زرین‌پال برای دریافت `ZARINPAL_MERCHANT_ID` **باید دقیقاً** با دامنهٔ `PUBLIC_BASE_URL` یکسان باشد؛ در غیر این صورت زرین‌پال درخواست ایجاد تراکنش با آدرس بازگشت (`callback_url`) دامنهٔ متفاوت را رد خواهد کرد.
 
@@ -84,10 +84,10 @@ sudo bash /tmp/deploy/preflight.sh
 
 ```bash
 # اگر آرشیو Node 22 را به سرور منتقل کرده‌اید:
-sudo NODE_TARBALL=/tmp/node-v22.22.3-linux-x64.tar.xz PUBLIC_BASE_URL=https://dining.shomal.ac.ir bash /tmp/deploy/provision.sh
+sudo NODE_TARBALL=/tmp/node-v22.22.3-linux-x64.tar.xz PUBLIC_BASE_URL=https://dining.example.edu bash /tmp/deploy/provision.sh
 
 # یا اگر سرور به nodejs.org دسترسی مستقیم دارد:
-sudo PUBLIC_BASE_URL=https://dining.shomal.ac.ir bash /tmp/deploy/provision.sh
+sudo PUBLIC_BASE_URL=https://dining.example.edu bash /tmp/deploy/provision.sh
 ```
 
 سپس فایل `/etc/food/app.env` را بازبینی کنید:
@@ -118,11 +118,11 @@ sudo bash /tmp/deploy/deploy.sh --tarball /tmp/food-release-<sha>.tar.gz
 
 > **هشدار:** هرگز فایل‌های تولیدشدهٔ خودکار Plesk (مانند `nginx.conf` در ریشهٔ دامنه) را دستی ویرایش نکنید.
 
-1. در پنل Plesk برای دامنهٔ موردنظر (`dining.shomal.ac.ir` یا `diningshomal.ir`) به **Hosting & DNS → Apache & nginx Settings** بروید و تیک **Proxy mode** را بردارید تا درخواست‌ها به Apache ارسال نشوند.
+1. در پنل Plesk برای دامنهٔ موردنظر (`dining.example.edu` یا دامنهٔ واقعی دانشگاه) به **Hosting & DNS → Apache & nginx Settings** بروید و تیک **Proxy mode** را بردارید تا درخواست‌ها به Apache ارسال نشوند.
 2. فایل نمونهٔ پروکسی را در مسیر استاندارد Plesk کپی و بازآرایی کنید:
 
 ```bash
-DOMAIN="dining.shomal.ac.ir"
+DOMAIN="dining.example.edu" # دامنهٔ واقعی سامانه را جایگزین کنید
 
 sudo nginx -t
 sudo cp /opt/food/current/deploy/nginx-vhost_nginx.conf.example "/var/www/vhosts/system/${DOMAIN}/conf/vhost_nginx.conf"

@@ -22,6 +22,8 @@ function employeeAsStudent(e: EmployeeMe): StudentMe {
     status: e.status,
     balanceRial: e.balanceRial,
     customerGroup: 'Student',
+    lastLoginAt: null,
+    previousLogin: null,
   };
 }
 

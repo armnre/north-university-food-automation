@@ -74,7 +74,7 @@ npm run build              # کامپایل کامل بستهٔ مشترک، API
 
 ## فهرست مستندات (`docs/`)
 
-- [`docs/DEPLOY.md`](docs/DEPLOY.md) — راهنمای گام‌به‌گام استقرار روی سرور Ubuntu 24.04 + Plesk + PostgreSQL 16 (دامنه‌های `dining.shomal.ac.ir` و `diningshomal.ir`)
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) — راهنمای گام‌به‌گام استقرار روی سرور Ubuntu 24.04 + Plesk + PostgreSQL 16 (دامنهٔ نمونه `dining.example.edu`)
 - [`docs/PAYMENTS.md`](docs/PAYMENTS.md) — معماری پرداخت مستقیم زرین‌پال، کسر خودکار اعتبار، قانون ۱۰٬۰۰۰ ریال شاپرک و آشتی‌سازی
 - [`docs/CANCELLATION.md`](docs/CANCELLATION.md) — وضعیت لغو رزرو در نسخهٔ اول و راهنمای فعال‌سازی مجدد لغو دانشجویی
 - [`docs/SECURITY.md`](docs/SECURITY.md) — کنترل‌های امنیتی، مدیریت نشست/CSRF و تحلیل ریسک ورود دانشجویی

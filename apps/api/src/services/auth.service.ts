@@ -139,7 +139,7 @@ export async function loginStudent(
   if (newDevice && previousUserAgents.length > 0) {
     await createNotification(deps.db, {
       title: 'ورود از دستگاه جدید',
-      body: `ورود به حساب شما از یک دستگاه/مرورگر جدید انجام شد. اگر شما نبودید، فوراً به معاونت دانشجویی اطلاع دهید.`,
+      body: `ورود به حساب شما از یک دستگاه یا مرورگر جدید (IP: ${input.ip || 'نامشخص'}) ثبت شد. اگر این ورود توسط شما انجام نشده است، از بخش پروفایل سایر نشست‌ها را باطل کرده و فوراً به معاونت دانشجویی اطلاع دهید.`,
       audience: 'Account',
       accountId,
       event: 'security.new_login',
@@ -330,6 +330,7 @@ export async function resolveAuthContext(deps: ServiceDeps, token: string): Prom
       status: row.student.status as StudentStatus,
       customerGroup: 'Student',
       balanceRial: Number(row.account.balanceRial),
+      lastLoginAt: row.student.lastLoginAt ?? null,
     };
   }
 

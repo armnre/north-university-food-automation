@@ -21,7 +21,7 @@ ENV_DIR="/etc/food"
 ENV_FILE="${ENV_DIR}/app.env"
 BACKUP_DIR="/var/backups/food"
 DB_NAME="${FOOD_DB_NAME:-food_automation}"
-PUBLIC_URL="${PUBLIC_BASE_URL:-https://dining.shomal.ac.ir}"
+PUBLIC_URL="${PUBLIC_BASE_URL:-https://dining.example.edu}"
 API_PORT="${PORT:-3101}"
 NODE_TARBALL="${NODE_TARBALL:-}"
 

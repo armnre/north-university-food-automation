@@ -186,6 +186,8 @@ export type StudentMe = {
   status: string;
   balanceRial: number;
   customerGroup: 'Student';
+  lastLoginAt: string | null;
+  previousLogin: { at: string; ip: string | null; userAgent: string | null } | null;
 };
 export type EmployeeMe = {
   id: string;

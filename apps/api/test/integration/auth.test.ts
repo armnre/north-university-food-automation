@@ -194,7 +194,7 @@ describe('محدودیت تلاش و کپچا', () => {
     const appWithProxy = await buildTestApp({ TRUSTED_PROXY_HOPS: '1', SETUP_CODE: 'test-setup-code-0123456789abcdef' });
     try {
       const student = await createStudent(db);
-      const clientA = createTestClient(appWithProxy.app, { headers: { 'x-forwarded-for': '10.0.0.1' } });
+      const clientA = createTestClient(appWithProxy.app, { headers: { 'x-forwarded-for': '203.0.113.1' } });
       await primeCsrf(clientA);
       for (let i = 0; i < 6; i += 1) {
         await clientA.post('/api/v1/auth/student/login', {
@@ -208,7 +208,7 @@ describe('محدودیت تلاش و کپچا', () => {
       });
       expect([423, 428]).toContain(locked.status);
 
-      const clientB = createTestClient(appWithProxy.app, { headers: { 'x-forwarded-for': '10.0.0.2' } });
+      const clientB = createTestClient(appWithProxy.app, { headers: { 'x-forwarded-for': '203.0.113.2' } });
       await primeCsrf(clientB);
       // از IP دیگر «قفل» اعمال نمی‌شود؛ فقط ممکن است کپچا خواسته شود
       const fromOtherIp = await clientB.post('/api/v1/auth/student/login', {
@@ -572,6 +572,53 @@ describe('کلاینت‌سازی رمز و تغییر رمز', () => {
       newPassword: 'another-strong-password',
     });
     expect(response.status).toBe(403);
+  });
+
+  it('ورود دانشجو از دستگاه جدید اعلان امنیتی ایجاد می‌کند و آخرین ورود در پروفایل برمی‌گردد', async () => {
+    const student = await createStudent(db);
+
+    const deviceA = createTestClient(ctx.app, {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120' },
+    });
+    await primeCsrf(deviceA);
+    const loginA = await deviceA.post<{ newDevice: boolean }>('/api/v1/auth/student/login', {
+      studentNumber: student.studentNumber,
+      nationalId: student.nationalId,
+    });
+    expect(loginA.status).toBe(200);
+
+    const meFirst = await deviceA.get<{
+      kind: 'student';
+      student: { lastLoginAt: string | null; previousLogin: { at: string; ip: string | null } | null };
+    }>('/api/v1/auth/me');
+    expect(meFirst.status).toBe(200);
+    expect(meFirst.body.student.lastLoginAt).toBeTruthy();
+    expect(meFirst.body.student.previousLogin).toBeNull();
+
+    // ورود از دستگاه/مرورگر کاملاً متفاوت باید اعلان `security.new_login` بسازد و ورود قبلی را گزارش دهد
+    const deviceB = createTestClient(ctx.app, {
+      headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) Safari/605.1.15' },
+    });
+    await primeCsrf(deviceB);
+    const loginB = await deviceB.post<{ newDevice: boolean }>('/api/v1/auth/student/login', {
+      studentNumber: student.studentNumber,
+      nationalId: student.nationalId,
+    });
+    expect(loginB.status).toBe(200);
+    expect(loginB.body.newDevice).toBe(true);
+
+    const meSecond = await deviceB.get<{
+      kind: 'student';
+      student: { lastLoginAt: string | null; previousLogin: { at: string; ip: string | null; userAgent: string | null } | null };
+    }>('/api/v1/auth/me');
+    expect(meSecond.status).toBe(200);
+    expect(meSecond.body.student.lastLoginAt).toBeTruthy();
+    expect(meSecond.body.student.previousLogin).not.toBeNull();
+    expect(meSecond.body.student.previousLogin?.userAgent).toContain('Windows NT 10.0');
+
+    const notifications = await deviceB.get<{ notifications: Array<{ title: string; body: string }> }>('/api/v1/me/notifications');
+    expect(notifications.status).toBe(200);
+    expect(notifications.body.notifications.some((n) => n.title === 'ورود از دستگاه جدید')).toBe(true);
   });
 });
 

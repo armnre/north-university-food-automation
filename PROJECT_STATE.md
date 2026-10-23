@@ -1,6 +1,6 @@
 # PROJECT_STATE — وضعیت واقعی و نهایی پروژه
 
-> آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (به وقت تهران) · شاخه: `arena/0e8be627-north-university-food-automati`
+> آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (به وقت تهران) · شاخه: `arena/c6f4cb08-north-university-food-automati`
 > این فایل وضعیت **واقعی** کار را ثبت می‌کند. هر چه «انجام و اجرا شد» نوشته شده، واقعاً اجرا و راستی‌آزمایی شده است؛ هر چه به دلیل محدودیت محیط اجرا نشده، صریح و صادقانه مستند شده است.
 
 ---
@@ -61,6 +61,13 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 - تولید اسکریپت‌های `deploy/{preflight.sh,provision.sh,build-release.sh,deploy.sh,backup.sh,healthcheck.sh,restore.md,nginx-vhost_nginx.conf.example}`، واحدهای سخت‌سازی‌شدهٔ `systemd` (`food-api`, `food-worker`, تایمرهای بکاپ و سلامت) و `logrotate` دقیقاً منطبق بر الگوی عملیاتی سرور دانشگاه شمال (`shomaldoc` روی ۳۰۸۰ دست‌نخورده، سرویس غذا روی `127.0.0.1:3101`، `/opt/food`، `/etc/food/app.env`).
 - نگارش `README.md`، `docs/DEPLOY.md`، `docs/PAYMENTS.md`، `docs/CANCELLATION.md` و بازنویسی کامل تمامی مستندات قدیمی `docs/*.md` بدون هیچ وابستگی به Zite.
 
+### تکمیل نهایی — گام ۱ (پاک‌سازی اسرار/دامنه‌ها، مستند تصمیم‌ها، امنیت ورود دانشجو و تولید خودکار RBAC)
+
+- حذف کامل IP واقعی سرور از تمامی فایل‌ها و جایگزینی با `<SERVER_IP>` و دامنه‌های نمونهٔ RFC (`dining.example.edu` / `food.example.org`)؛ گسترش `scripts/check-no-secrets.mjs` برای رد خودکار هرگونه IPv4 عمومی/خصوصی واقعی و دامنه‌های واقعی خارج از فهرست مجاز.
+- ایجاد `docs/DECISIONS.md` با شرح ۵ تصمیم کلیدی، کلیدهای دقیق `system_settings` / مهاجرت‌های تغییر و تست‌های وابسته.
+- ارتقای `docs/SECURITY.md` با تحلیل صریح ریسک ورود بدون رمز دانشجو و ۵ کنترل جبرانی؛ افزودن `lastLoginAt` و `previousLogin` به `/api/v1/auth/me`، نمایش «آخرین ورود» و مدیریت/ابطال نشست‌های فعال در `ProfilePage.tsx` دانشجو، و افزودن تست یکپارچهٔ اعلان «ورود از دستگاه جدید» (`security.new_login`).
+- افزودن `packages/shared/src/rbac-doc.ts` و اسکریپت `npm run docs:rbac` (`scripts/generate-rbac-doc.ts`) برای تولید خودکار `docs/RBAC.md` از منبع واحد `permissions.ts` به همراه تست واحد عدم واگرایی مستندات (`time-and-rbac.test.ts`).
+
 ---
 
 ## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط
@@ -79,7 +86,7 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 | `npm run test:e2e` / `screenshots` | **در این محیط اجرا نشد** | پیکربندی و کد کامل در `apps/web/e2e/` و CI قرار دارد، اما باینری مرورگر Chromium در این محیط سندباکس نصب نیست و دسترسی دانلود باینری مرورگر مسدود است (در GitHub Actions CI اجرا می‌شود)                                 |
 | ممیزی Lighthouse                   | **در این محیط اجرا نشد** | به دلیل نبود باینری Chrome/Chromium روی سیستم‌عامل سندباکس قابل اجرا نبود؛ تمامی الزامات فنی PWA (مانیفست، آیکن‌ها، آفلاین، فونت محلی، باندل `<80 kB` gzip، ابعاد لمسی و کنتراست) پیاده‌سازی و با `pwa.test.ts` تست شدند |
 | `docker compose up`                | **در این محیط اجرا نشد** | Docker روی ماشین سندباکس نصب نیست؛ تست‌های دیتابیس با PostgreSQL واقعی `embedded-postgres` اجرا شدند و PostgreSQL 16 نیز در GitHub Actions CI پیکربندی شده است                                                           |
-| استقرار روی سرور Plesk دانشگاه     | **در این محیط اجرا نشد** | دسترسی SSH به سرور دانشگاه (`185.129.168.87`) از محیط سندباکس وجود ندارد؛ بستهٔ کامل اسکریپت‌ها و مستندات اجرایی در `deploy/` و `docs/DEPLOY.md` آمادهٔ اجرا توسط مدیر سرور است                                          |
+| استقرار روی سرور Plesk دانشگاه     | **در این محیط اجرا نشد** | دسترسی SSH به سرور دانشگاه (`<SERVER_IP>`) از محیط سندباکس وجود ندارد؛ بستهٔ کامل اسکریپت‌ها و مستندات اجرایی در `deploy/` و `docs/DEPLOY.md` آمادهٔ اجرا توسط مدیر سرور است                                             |
 
 ---
 

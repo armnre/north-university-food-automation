@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
@@ -8,6 +11,7 @@ import {
   isPastServiceDate,
   MANAGEABLE_STAFF_ROLES,
   PERMISSIONS,
+  renderRbacMarkdown,
   ROLE_PERMISSIONS,
   STAFF_ROLES,
   tehranDateTimeToUtc,
@@ -99,5 +103,15 @@ describe('ماتریس RBAC', () => {
     expect(canManageStaffRole('NutritionManager', 'StudentAffairs')).toBe(false);
     expect(canManageStaffRole('StudentAffairs', 'Operator')).toBe(false);
     expect(canManageStaffRole('Finance', 'Operator')).toBe(false);
+  });
+
+  it('فایل docs/RBAC.md دقیقاً منطبق بر ماتریس کد در @food/shared است (عدم واگرایی مستندات)', async () => {
+    const prettier = await import('prettier');
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const docPath = resolve(testDir, '../../../docs/RBAC.md');
+    const actual = readFileSync(docPath, 'utf8').replace(/\r\n/g, '\n');
+    const config = (await prettier.resolveConfig(docPath)) ?? {};
+    const expected = (await prettier.format(renderRbacMarkdown(), { ...config, filepath: docPath })).replace(/\r\n/g, '\n');
+    expect(actual).toBe(expected);
   });
 });

@@ -169,6 +169,32 @@ export async function listRecentUserAgents(deps: ServiceDeps, subjectType: Subje
   return rows.map((r) => r.userAgent ?? '').filter(Boolean);
 }
 
+/** آخرین نشست ثبت‌شده قبل از نشست جاری (برای نمایش «آخرین ورود قبلی» در پروفایل دانشجو). */
+export async function findPreviousLoginSession(
+  deps: ServiceDeps,
+  subjectType: SubjectType,
+  subjectId: string,
+  currentSessionId: string,
+): Promise<{ at: string; ip: string | null; userAgent: string | null } | null> {
+  const rows = await deps.db
+    .select({
+      createdAt: sessions.createdAt,
+      ip: sessions.ip,
+      userAgent: sessions.userAgent,
+    })
+    .from(sessions)
+    .where(and(eq(sessions.subjectType, subjectType), eq(sessions.subjectId, subjectId), sql`${sessions.id} <> ${currentSessionId}`))
+    .orderBy(sql`${sessions.createdAt} DESC`)
+    .limit(1);
+  const prev = rows[0];
+  if (!prev) return null;
+  return {
+    at: prev.createdAt.toISOString(),
+    ip: prev.ip,
+    userAgent: prev.userAgent,
+  };
+}
+
 export async function revokeSessionById(
   deps: ServiceDeps,
   sessionId: string,

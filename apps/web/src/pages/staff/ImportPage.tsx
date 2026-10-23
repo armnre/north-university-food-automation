@@ -15,8 +15,8 @@ import { PageHeader, Pill, Section, StatCard } from '../../components/ui-kit';
 import { downloadCsv, errMsg, faDateTime, faNum } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 
-const MAX_BYTES = 5 * 1024 * 1024;
-const MAX_ROWS = 10000;
+const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_ROWS = 25000;
 type ImportCommitResult = { batchId: string; status: string; written: number; created: number; updated: number; removed: number; conflictsSkipped: number; sessionsRevoked: number; replay: boolean };
 type Preview = {
   batchId: string; summary: { total: number; valid: number; errors: number; new: number; changed: number; unchanged: number; returning: number; conflicts: number; removed: number }; duplicateOfCommitted: boolean; blocked: boolean;
@@ -46,7 +46,7 @@ export default function ImportPage() {
   const onFile = async (f: File | undefined) => {
     if (!f) return;
     if (!/\.xlsx$/i.test(f.name)) { toast.error('فقط فایل xlsx مجاز است (xls و csv پذیرفته نمی‌شوند).'); return; }
-    if (f.size > MAX_BYTES) { toast.error('حجم فایل بیش از ۵ مگابایت است.'); return; }
+    if (f.size > MAX_BYTES) { toast.error('حجم فایل بیش از ۲۰ مگابایت است.'); return; }
     setFile(f); setStep(1);
   };
 
@@ -90,8 +90,8 @@ export default function ImportPage() {
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 text-center hover:border-primary/50 hover:bg-secondary/40">
             <Upload className="h-10 w-10 text-primary" />
             <span className="mt-3 font-semibold">فایل Excel معاونت را انتخاب کنید</span>
-            <span className="mt-1 text-sm text-muted-foreground">xlsx، xls یا csv · حداکثر ۵ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
-            <input type="file" className="sr-only" accept=".xlsx,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
+            <span className="mt-1 text-sm text-muted-foreground">فقط فایل xlsx · حداکثر ۲۰ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
+            <input type="file" className="sr-only" accept=".xlsx" onChange={(e) => onFile(e.target.files?.[0])} />
           </label>
           <p className="mt-4 text-xs text-muted-foreground">ستون‌های الزامی: شماره دانشجویی، کد ملی و نام (یا نام و نام خانوادگی جداگانه). ستون‌های اختیاری: دانشکده، رشته، مقطع، سال ورود.</p>
         </Section>

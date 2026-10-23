@@ -98,6 +98,12 @@ scripts/              check-no-secrets.mjs، loadtest.ts (autocannon)، screensh
 - ارتقای `deploy/preflight.sh` برای بررسی نسخهٔ عددی PostgreSQL (`>=15`)، فضای خالی مسیر پشتیبان (`/var/backups`)، آزمون `nginx -t`، بررسی `age`/`BACKUP_AGE_RECIPIENT` و هشدار صریح نبود مقصد بکاپ برون‌سروری.
 - اجرای واقعی ساخت بستهٔ انتشار تولیدی (`deploy/build-release.sh` -> بستهٔ `53 MB` با `0 vulnerabilities`) و راه‌اندازی مستقل آن با `NODE_ENV=production` و `SERVE_STATIC=true` روی PostgreSQL واقعی؛ ثبت کامل خروجی‌ها و موارد «اجرا نشد» در `docs/DEPLOY_TEST_LOG.md`، نگارش کتابچهٔ راهبر سرور در `deploy/ADMIN_RUNBOOK_FA.md` و چک‌لیست بهره‌برداری در `docs/GO_LIVE.md`.
 
+### تکمیل نهایی — گام ۷ (تست سرتاسری E2E کامل با حالت آفلاین و پایپ‌لاین اسکرین‌شات CI)
+
+- گسترش `apps/web/e2e/app.spec.ts` و `apps/web/e2e/start-e2e-server.ts` به چرخهٔ کامل سرتاسری: ایمپورت اکسل دانشجو توسط معاونت دانشجویی ← ساخت غذا توسط مدیر تغذیه ← رزرو چندغذایی دانشجو با پرداخت درگاه آزمایشی (`sandbox`) ← صدور بلیط‌های ۸ کاراکتری بدون `R-` ← اسکن آنلاین و اسکن آفلاین اپراتور با `context.setOffline(true)`، رد تکرار آفلاین و همگام‌سازی خودکار پس از وصل مجدد ← گزارش مدیریت (با تولید الگوریتمی کد ملی تستی در حافظه بدون هیچ کد ملی خام).
+- ارتقای `scripts/screenshots.ts` برای راه‌اندازی خودکار سرور و ثبت ۷ اسکرین‌شات واقعی موبایل و دسکتاپ RTL در `docs/screenshots/`، و پیکربندی اجرای `npm run screenshots` + ذخیرهٔ آرتیفکت `ui-screenshots-rtl` در `.github/workflows/ci.yml`.
+- گزارش صادقانهٔ محیط محلی: اجرای `npx playwright install chromium` در سندباکس به علت محدودیت شبکهٔ خروجی به `cdn.playwright.dev:443` (`ECONNRESET`) ناموفق بود؛ هیچ تصویر ساختگی ایجاد نشد و اجرای مرورگر واقعی بر عهدهٔ کار `e2e-playwright` در GitHub Actions است.
+
 ---
 
 ## ۳. نتایج واقعی اجرای تست‌ها و ابزارها در این محیط

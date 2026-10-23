@@ -133,3 +133,23 @@ jobs:
 
       - name: Run Playwright E2E suite
         run: npm run test:e2e
+
+      - name: Capture RTL screenshots of key pages
+        run: npm run screenshots
+
+      - name: Upload RTL UI screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots-rtl
+          path: docs/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Playwright failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

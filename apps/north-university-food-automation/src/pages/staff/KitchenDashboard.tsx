@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BarChart3, BookOpen, CalendarPlus, ChefHat, UtensilsCrossed } from 'lucide-react';
-import { offeringsList } from 'zitejs/api';
+import { offeringsList } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Progress } from '@project/components/ui/progress';
 import { cn } from '@project/components/lib/utils';

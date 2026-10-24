@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Loader2, ShieldCheck, GraduationCap, Building2 } from 'lucide-react';
-import { authSetupAdmin, authSetupStatus, authStaffLogin, authStudentLogin } from 'zitejs/api';
+import { Loader2, ShieldCheck, GraduationCap, Building2, BadgeCheck } from 'lucide-react';
+import { authEmployeeLogin, authSetupAdmin, authSetupStatus, authStaffLogin, authStudentLogin } from '../lib/api';
+import { CaptchaBox, captchaFrom, type Captcha } from '../components/AuthExtras';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';
@@ -27,19 +28,22 @@ function StudentForm() {
   const [nid, setNid] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const valid = sn.trim().length >= 5 && nid.trim().length === 10;
+  const [captcha, setCaptcha] = useState<Captcha>(null);
+  const [ans, setAns] = useState('');
+  const valid = sn.trim().length >= 5 && nid.trim().length === 10 && (!captcha || !!ans);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
     setBusy(true); setErr('');
-    try { await signIn((await authStudentLogin({ studentNumber: sn, nationalId: nid })).token); }
-    catch (e2) { setErr(errMsg(e2)); }
+    try { await authStudentLogin({ studentNumber: sn, nationalId: nid, ...(captcha ? { captchaId: captcha.captchaId, captchaAnswer: ans } : {}) }); await signIn(); }
+    catch (e2) { setErr(errMsg(e2)); setCaptcha(captchaFrom(e2)); setAns(''); }
     finally { setBusy(false); }
   };
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <Field id="sn" label="شماره دانشجویی" inputMode="numeric" autoComplete="username" dir="ltr" value={sn} onChange={(e) => setSn(e.target.value)} />
       <Field id="nid" label="کد ملی" inputMode="numeric" autoComplete="off" dir="ltr" maxLength={10} type="password" value={nid} onChange={(e) => setNid(e.target.value)} error={nid && nid.length !== 10 ? 'کد ملی ۱۰ رقم است' : undefined} />
+      {captcha && <CaptchaBox captcha={captcha} answer={ans} onAnswer={setAns} />}
       <ErrorNote message={err} onClose={() => setErr('')} />
       <Button type="submit" className="h-11 w-full text-base" disabled={!valid || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ورود به سامانه</Button>
       <p className="text-center text-xs text-muted-foreground">ورود فقط با اطلاعات ثبت‌شده توسط معاونت دانشجویی امکان‌پذیر است.</p>
@@ -47,8 +51,10 @@ function StudentForm() {
   );
 }
 
-function StaffForm() {
+function StaffForm({ kind = 'staff' }: { kind?: 'staff' | 'employee' }) {
   const { signIn } = useSession();
+  const [captcha, setCaptcha] = useState<Captcha>(null);
+  const [ans, setAns] = useState('');
   const [u, setU] = useState('');
   const [p, setP] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,16 +62,18 @@ function StaffForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr('');
-    try { await signIn((await authStaffLogin({ username: u, password: p })).token); }
-    catch (e2) { setErr(errMsg(e2)); }
+    const login = kind === 'staff' ? authStaffLogin : authEmployeeLogin;
+    try { await login({ username: u, password: p, ...(captcha ? { captchaId: captcha.captchaId, captchaAnswer: ans } : {}) }); await signIn(); }
+    catch (e2) { setErr(errMsg(e2)); setCaptcha(captchaFrom(e2)); setAns(''); }
     finally { setBusy(false); }
   };
   return (
     <form onSubmit={submit} className="space-y-4">
       <Field id="u" label="نام کاربری" dir="ltr" autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
       <Field id="p" label="رمز عبور" dir="ltr" type="password" autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} />
+      {captcha && <CaptchaBox captcha={captcha} answer={ans} onAnswer={setAns} />}
       <ErrorNote message={err} onClose={() => setErr('')} />
-      <Button type="submit" className="h-11 w-full text-base" disabled={!u || !p || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}ورود کارکنان</Button>
+      <Button type="submit" className="h-11 w-full text-base" disabled={!u || !p || (!!captcha && !ans) || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}{kind === 'staff' ? 'ورود کارکنان' : 'ورود کارمندان'}</Button>
     </form>
   );
 }
@@ -119,12 +127,14 @@ export default function LoginPage() {
             </div>
           </div>
           <Tabs defaultValue="student">
-            <TabsList className="mb-6 grid h-12 w-full grid-cols-2 rounded-2xl p-1">
+            <TabsList className="mb-6 grid h-12 w-full grid-cols-3 rounded-2xl p-1">
               <TabsTrigger value="student" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><GraduationCap className="ms-1.5 h-4 w-4" />دانشجو</TabsTrigger>
               <TabsTrigger value="staff" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><Building2 className="ms-1.5 h-4 w-4" />کارکنان</TabsTrigger>
+              <TabsTrigger value="employee" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><BadgeCheck className="ms-1.5 h-4 w-4" />کارمند</TabsTrigger>
             </TabsList>
             <TabsContent value="student"><StudentForm /></TabsContent>
             <TabsContent value="staff">{needsSetup ? <SetupForm onDone={() => setNeedsSetup(false)} /> : <StaffForm />}</TabsContent>
+            <TabsContent value="employee"><StaffForm kind="employee" /></TabsContent>
           </Tabs>
         </div>
       </div>

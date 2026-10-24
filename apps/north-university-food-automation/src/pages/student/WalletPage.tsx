@@ -1,5 +1,5 @@
 import { Wallet as WalletIcon, Info } from 'lucide-react';
-import { studentWallet } from 'zitejs/api';
+import { studentWallet } from '../../lib/api';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, StatCard, Section } from '../../components/ui-kit';
 import { LEDGER_TYPES, faDateTime, rial } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';

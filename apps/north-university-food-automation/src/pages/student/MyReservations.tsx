@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, MapPin, QrCode, Ticket } from 'lucide-react';
-import { studentReservations } from 'zitejs/api';
+import { studentReservations } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { cn } from '@project/components/lib/utils';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import { BarcodeDetector } from 'barcode-detector/pure';
 import { AlertTriangle, Ban, Camera, CameraOff, CheckCircle2, Clock, Keyboard, Loader2, MapPinOff, RotateCcw, WifiOff, XCircle } from 'lucide-react';
-import { deliveryConfirm, deliveryScan, deliveryStats } from 'zitejs/api';
+import { deliveryConfirm, deliveryScan, deliveryStats } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { cn } from '@project/components/lib/utils';

@@ -6,10 +6,12 @@ import LoginPage from './pages/LoginPage';
 import StudentApp from './pages/student/StudentApp';
 import StaffApp from './pages/staff/StaffApp';
 import { LoadingBlock } from './components/ui-kit';
+import { ChangePasswordScreen } from './components/AuthExtras';
 
 function Gate() {
-  const { me, loading } = useSession();
+  const { me, loading, mustChangePassword } = useSession();
   if (loading) return <div className="mx-auto max-w-md p-10"><LoadingBlock rows={3} /></div>;
+  if (mustChangePassword) return <ChangePasswordScreen />;
   if (!me) return <LoginPage />;
   return me.kind === 'student' ? <StudentApp me={me.student} /> : <StaffApp me={me.staff} />;
 }

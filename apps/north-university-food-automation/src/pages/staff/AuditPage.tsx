@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { auditList } from 'zitejs/api';
+import { auditList } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@project/components/ui/table';

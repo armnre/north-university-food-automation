@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Camera, Loader2, Minus, Plus, Search, Trash2, UtensilsCrossed, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { catalogList, catalogSave } from 'zitejs/api';
-import { useUpload } from 'zitejs/upload';
+import { catalogList, catalogSave } from '../../lib/api';
+import { useUpload } from '../../lib/upload';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

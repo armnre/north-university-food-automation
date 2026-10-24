@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { Search, Loader2, Download, ArrowUpDown, X, FileText } from 'lucide-react';
 import { toast } from 'sonner';
-import { adminStudents, adminStudentStatus } from 'zitejs/api';
+import { adminStudents, adminStudentStatus } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@project/components/ui/select';

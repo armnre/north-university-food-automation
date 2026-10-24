@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { settingsManage } from 'zitejs/api';
+import { settingsManage } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Label } from '@project/components/ui/label';
 import { Textarea } from '@project/components/ui/textarea';

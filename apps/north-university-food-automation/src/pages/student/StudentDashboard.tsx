@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, QrCode, UtensilsCrossed, Wallet as WalletIcon } from 'lucide-react';
-import { studentReservations, studentWallet } from 'zitejs/api';
+import { studentReservations, studentWallet } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { ErrorState, LoadingBlock, Pill, Section, StatCard, EmptyState } from '../../components/ui-kit';
 import QrDialog, { type QrTarget } from '../../components/QrDialog';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { Download } from 'lucide-react';
-import { catalogList, reservationsAdminList } from 'zitejs/api';
+import { catalogList, reservationsAdminList } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@project/components/ui/select';

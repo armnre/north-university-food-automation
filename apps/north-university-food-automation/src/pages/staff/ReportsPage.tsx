@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
-import { catalogList, reportsSummary } from 'zitejs/api';
+import { catalogList, reportsSummary } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@project/components/ui/select';

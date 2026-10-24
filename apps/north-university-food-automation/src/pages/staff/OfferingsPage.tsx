@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown, CalendarPlus, Copy } from 'lucide-react';
 import { CopyMenuDialog, DayMenuBuilder } from '../../components/MenuTools';
 import { toast } from 'sonner';
-import { catalogList, offeringSave, offeringsList, reservationsAdminList } from 'zitejs/api';
+import { catalogList, offeringSave, offeringsList, reservationsAdminList } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

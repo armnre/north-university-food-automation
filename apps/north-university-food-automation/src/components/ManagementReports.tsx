@@ -1,6 +1,6 @@
 import { Download } from 'lucide-react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { reportsAdvanced } from 'zitejs/api';
+import { reportsAdvanced } from '../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@project/components/ui/table';
 import { ErrorState, LoadingBlock, Section, StatCard } from './ui-kit';

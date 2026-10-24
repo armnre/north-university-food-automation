@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { staffList, staffSave } from 'zitejs/api';
+import { staffList, staffSave } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

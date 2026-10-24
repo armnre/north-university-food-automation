@@ -26,7 +26,17 @@
 | ۱ پایه‌ی بک‌اند و دیتابیس | **عمدتاً انجام شد** (جزئیات پایین) |
 | ۲ احراز هویت، نشست، RBAC | **انجام شد** (به‌جز موارد ذکرشده) |
 | ۳ پورت endpointها | **انجام شد** (۳۷/۳۷ + endpointهای جدید؛ موارد باز پایین) |
-| ۴ تا ۹ | انجام نشده |
+| ۴ adapter فرانت | **بخش ۱ انجام شد** (جزئیات پایین) |
+| ۵ تا ۹ | انجام نشده |
+
+## مرحله ۴ — بخش ۱ (نتیجه‌ی واقعی، ۲۰۲۶-۱۰-۲۴)
+- `src/lib/api.ts`: adapter با همان نام ۳۷ تابع قبلی روی `/api/v1` (کوکی HttpOnly، CSRF دوطرفه با `x-csrf-token`، `ApiError` با code/details، رویداد `session-expired` روی ۴۰۱). همه‌ی importهای `zitejs/api` در صفحه‌ها به adapter تغییر کرد؛ `zitejs/upload` ← `src/lib/upload.ts`.
+- `session.tsx`: بدون توکن در sessionStorage؛ وضعیت فقط از `GET /auth/me`؛ کارمند به صفحه‌های سلف‌سرویس نگاشت می‌شود.
+- صفحه‌های کم‌شده: کپچا در ورود، زبانه‌ی ورود کارمند، صفحه‌ی تغییر رمز اجباری، صفحه‌ی `/payment/result` بعد از زرین‌پال. پیام «درگاه آزمایشی» حذف شد.
+- ایمپورت: فایل `.xlsx` واقعی (multipart) + نگاشت ستون‌ها به سرور فرستاده می‌شود.
+- `vite.standalone.config.ts` + اسکریپت‌های `dev:standalone`/`build:standalone`/`typecheck:standalone` (بدون runtime زایت؛ proxy به API).
+- نتیجه: `tsc -p tsconfig.standalone.json` روی کل فرانت (بدون src/api و src/server) ← فقط دو خطای «ماژول qrcode/xlsx در محیط عامل نصب نیست» (در package.json اپ هستند). **build کامل و تست e2e اجرا نشد.**
+- باقی‌مانده‌ی مرحله ۴: تطبیق شکل پاسخ‌ها صفحه‌به‌صفحه با API در حال اجرا، لغو رزرو و صدور دوباره‌ی QR در فرانت، پنل NeedsReview، مدیریت کارمندان، Undo ایمپورت، حذف `src/api` و `src/server` قدیمی.
 
 ## مرحله ۳ — بخش ۲ (نتیجه‌ی واقعی، ۲۰۲۶-۱۰-۲۴)
 - ساخته‌شده: finance (دفتر کل + شارژ/تعدیل دستی `MANUAL_CASH` با سقف و idempotency، فقط Finance)، staff و employees (سلسله‌مراتب `canManage`، ایمپورت گروهی کارمند با اعتبارنامه‌ی یک‌بار-نمایش)، admin (داشبورد، دانشجویان، گزارش دانشجو، تغییر وضعیت + ابطال نشست)، audit، لیست رزروها، اعلان‌ها، تنظیمات (فقط SuperAdmin، اعتبارسنجی بازه، audit قبل/بعد)، ایمپورت اکسل سمت سرور با `exceljs` (magic bytes، ۵MB، ۱۰٬۰۰۰ ردیف، پیش‌نمایش جدا، CSV خطا با محافظ injection، قفل batch، تأیید صریح تعارض کد ملی، fullSync فقط Removed، Undo آخرین batch)، پرداخت زرین‌پال v4 (کسر اعتبار، تسویه‌ی بدون درگاه وقتی payable=0، حداقل ۱۰٬۰۰۰ ریال، verify اجباری حتی با Status≠OK، پذیرش ۱۰۰/۱۰۱، SAVEPOINT هر آیتم، NeedsReview + پنل تعیین‌تکلیف، reconcile)، گزارش‌ها (summary، advanced با گزارش هدررفت و بخش مالی فقط برای `reportsFinance`، خروجی CSV/Excel بدون کد ملی)، آپلود تصویر غذا (magic bytes، ۲MB، sharp ≤۱۲۰۰px بدون متادیتا، **مسیر جایگزین بدون sharp** با حذف EXIF، ذخیره خارج از public)، `me/profile` (آخرین ورود قبلی).

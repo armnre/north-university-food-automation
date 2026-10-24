@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Bell, CalendarDays, HelpCircle, Home, ReceiptText, UserRound, Wallet } from 'lucide-react';
-import { studentNotifications } from 'zitejs/api';
+import { studentNotifications } from '../../lib/api';
 import Shell, { type NavItem } from '../../components/Shell';
 import { useSession, type StudentMe } from '../../lib/session';
 import StudentDashboard from './StudentDashboard';
@@ -10,6 +10,7 @@ import MyReservations from './MyReservations';
 import WalletPage from './WalletPage';
 import NotificationsPage from './NotificationsPage';
 import ProfilePage from './ProfilePage';
+import PaymentResultPage from './PaymentResultPage';
 
 const items: NavItem[] = [
   { to: '/', label: 'خانه', icon: <Home />, mobile: true },
@@ -51,6 +52,7 @@ export default function StudentApp({ me }: { me: StudentMe }) {
         <Route path="/notifications" element={<NotificationsPage mode="notifications" />} />
         <Route path="/help" element={<NotificationsPage mode="help" />} />
         <Route path="/profile" element={<ProfilePage me={me} />} />
+        <Route path="/payment/result" element={<PaymentResultPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

@@ -1,6 +1,6 @@
 import { Activity, CheckCircle2, GraduationCap, Utensils, XCircle } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { adminDashboard } from 'zitejs/api';
+import { adminDashboard } from '../../lib/api';
 import { ErrorState, LoadingBlock, PageHeader, Section, StatCard, Pill } from '../../components/ui-kit';
 import { MEALS, faDate, faDateTime, faNum, faShort, rial } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';

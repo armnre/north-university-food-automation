@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { AlertTriangle, CheckCircle2, Download, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { financeAdjust, financeLedger } from 'zitejs/api';
+import { financeAdjust, financeLedger } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { CheckCircle2, Download, FileSpreadsheet, Loader2, Upload, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { importCancel, importCommit, importList, importPreview } from 'zitejs/api';
+import { importCancel, importCommit, importList, importPreview } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Label } from '@project/components/ui/label';
 import { Switch } from '@project/components/ui/switch';
@@ -99,7 +99,7 @@ export default function ImportPage() {
 
   const runPreview = async () => {
     setBusy(true);
-    try { setPreview((await importPreview({ token, fileName: file!.name, policy, fullSync, rows: buildRows() })) as Preview); setStep(2); history.reload(); }
+    try { setPreview((await importPreview({ file: file!, policy, fullSync, mapping: Object.fromEntries(Object.entries(map).filter(([, v]) => !!v)) as Record<string, string> })) as Preview); setStep(2); history.reload(); }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
   const commit = async () => {
@@ -132,8 +132,8 @@ export default function ImportPage() {
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 text-center hover:border-primary/50 hover:bg-secondary/40">
             <Upload className="h-10 w-10 text-primary" />
             <span className="mt-3 font-semibold">فایل Excel معاونت را انتخاب کنید</span>
-            <span className="mt-1 text-sm text-muted-foreground">xlsx، xls یا csv · حداکثر ۵ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
-            <input type="file" className="sr-only" accept=".xlsx,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
+            <span className="mt-1 text-sm text-muted-foreground">فقط xlsx · حداکثر ۵ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
+            <input type="file" className="sr-only" accept=".xlsx" onChange={(e) => onFile(e.target.files?.[0])} />
           </label>
           <p className="mt-4 text-xs text-muted-foreground">ستون‌های الزامی: شماره دانشجویی، کد ملی و نام (یا نام و نام خانوادگی جداگانه). ستون‌های اختیاری: دانشکده، رشته، مقطع، سال ورود.</p>
         </Section>

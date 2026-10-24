@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Clock, MapPin, Plus, ShoppingBag, Users } from 'lucide-react';
-import { studentMenu } from 'zitejs/api';
+import { studentMenu } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { cn } from '@project/components/lib/utils';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';

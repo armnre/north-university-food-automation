@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "npx tsgo --noEmit -p tsconfig.app.json --pretty"
+    "typecheck": "npx tsgo --noEmit -p tsconfig.app.json --pretty",
+    "dev:standalone": "vite --config vite.standalone.config.ts",
+    "build:standalone": "vite build --config vite.standalone.config.ts",
+    "typecheck:standalone": "tsc -p tsconfig.standalone.json"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "2.45.6",

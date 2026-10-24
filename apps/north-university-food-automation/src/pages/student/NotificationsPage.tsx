@@ -1,5 +1,5 @@
 import { Bell, LifeBuoy } from 'lucide-react';
-import { studentNotifications } from 'zitejs/api';
+import { studentNotifications } from '../../lib/api';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, Pill, Section } from '../../components/ui-kit';
 import { faDateTime } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';

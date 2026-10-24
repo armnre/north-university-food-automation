@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { notificationsAdmin } from 'zitejs/api';
+import { notificationsAdmin } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

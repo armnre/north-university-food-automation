@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
-import { adminStudentReport, AdminStudentReportOutputType } from 'zitejs/api';
+import { adminStudentReport, AdminStudentReportOutputType } from '../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@project/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@project/components/ui/tabs';

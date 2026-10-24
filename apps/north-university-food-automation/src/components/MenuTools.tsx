@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarPlus, Check, Copy, Loader2, Minus, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { offeringsBulk } from 'zitejs/api';
+import { offeringsBulk } from '../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';

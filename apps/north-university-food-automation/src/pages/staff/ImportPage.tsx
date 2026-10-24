@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { CheckCircle2, Download, FileSpreadsheet, Loader2, Upload, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { importCancel, importCommit, importList, importPreview } from '../../lib/api';
+import { importCancel, importCommit, importList, importPreview, importUndo } from '../../lib/api';
+import ConfirmButton from '../../components/ConfirmButton';
 import { Button } from '@project/components/ui/button';
 import { Label } from '@project/components/ui/label';
 import { Switch } from '@project/components/ui/switch';
@@ -240,8 +241,13 @@ export default function ImportPage() {
                   <TableRow key={b.id}>
                     <TableCell className="max-w-[180px] truncate">{b.fileName}</TableCell><TableCell className="text-xs">{faDateTime(b.createdAt)}</TableCell><TableCell className="hidden sm:table-cell">{b.uploadedBy}</TableCell>
                     <TableCell className="num">{faNum(b.totalRows)} / {faNum(b.errorRows)}</TableCell>
-                    <TableCell><Pill tone={b.status === 'Committed' ? 'success' : b.status === 'Failed' ? 'danger' : b.status === 'Preview' ? 'info' : 'muted'}>{({ Committed: 'ثبت‌شده', Preview: 'پیش‌نمایش', Cancelled: 'لغوشده', Failed: 'ناموفق' } as Record<string, string>)[b.status] ?? b.status}</Pill></TableCell>
-                    <TableCell>{b.errorRows > 0 && <Button size="sm" variant="ghost" onClick={() => downloadErrors(JSON.parse(b.errorReport || '[]'), `errors-${b.id.slice(0, 8)}.csv`)}><Download className="h-4 w-4" /></Button>}</TableCell>
+                    <TableCell><Pill tone={b.status === 'Committed' ? 'success' : b.status === 'Failed' ? 'danger' : b.status === 'Preview' ? 'info' : 'muted'}>{({ Committed: 'ثبت‌شده', Preview: 'پیش‌نمایش', Cancelled: 'لغوشده', Failed: 'ناموفق', Undone: 'بازگردانی‌شده' } as Record<string, string>)[b.status] ?? b.status}</Pill></TableCell>
+                    <TableCell>{b.errorRows > 0 && <Button size="sm" variant="ghost" onClick={() => downloadErrors(JSON.parse(b.errorReport || '[]'), `errors-${b.id.slice(0, 8)}.csv`)}><Download className="h-4 w-4" /></Button>}
+                      {b.id === history.data!.batches.find((x) => x.status === 'Committed')?.id && (
+                        <ConfirmButton size="sm" variant="ghost" className="text-destructive" title="بازگردانی آخرین واردسازی" confirmLabel="بازگردانی"
+                          description="دانشجویانی که با این فایل اضافه شده‌اند و هنوز وارد نشده‌اند و رزرو یا تراکنشی ندارند حذف می‌شوند. فقط آخرین دسته‌ی ثبت‌شده قابل بازگردانی است."
+                          action={async () => { const r = await importUndo({ batchId: b.id }); history.reload(); return faNum(r.removed) + ' ردیف بازگردانی شد.'; }}>بازگردانی</ConfirmButton>
+                      )}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

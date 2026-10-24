@@ -104,6 +104,7 @@ export const studentReservations = ep('GET', '/me/reservations');
 export const studentReserve = ep('POST', '/me/reserve');
 export const studentWallet = ep('GET', '/me/wallet');
 export const studentProfile = ep('GET', '/me/profile');
+export const studentReissueQr = (i: In) => request('POST', '/me/reservations/:id/reissue-qr', i);
 export const studentCancelReservation = (i: In) => request('POST', '/me/reservations/:id/cancel', i);
 export const paymentResult = (paymentId: string): Promise<StudentCheckoutOutputType> => request('POST', '/payments/result', { paymentId });
 

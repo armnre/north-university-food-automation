@@ -5,6 +5,7 @@ import { studentReservations } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { cn } from '@project/components/lib/utils';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';
+import TicketActions from '../../components/TicketActions';
 import QrDialog, { type QrTarget } from '../../components/QrDialog';
 import { MEALS, RES_STATUS, faDate, faDateTime, rial, showCode, tehranToday } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
@@ -55,7 +56,7 @@ export default function MyReservations() {
           {rows.map((r) => {
             const active = r.status === 'Reserved' && !!r.qrToken;
             return (
-              <button key={r.id} disabled={!active} onClick={() => open(r)} className={cn('lift flex items-stretch overflow-hidden rounded-2xl border bg-card text-right shadow-[var(--shadow-sm)]', !active && 'cursor-default opacity-80')}>
+              <div key={r.id} className="space-y-1"><button disabled={!active} onClick={() => open(r)} className={cn('lift flex items-stretch overflow-hidden rounded-2xl border bg-card text-right shadow-[var(--shadow-sm)]', !active && 'cursor-default opacity-80')}>
                 <span className="grid w-16 shrink-0 place-items-center bg-accent text-2xl">{EMOJI[r.mealType] ?? '🍽️'}</span>
                 <span className="relative w-0 border-r-2 border-dashed border-border" />
                 <span className="min-w-0 flex-1 p-3.5">
@@ -65,7 +66,7 @@ export default function MyReservations() {
                   {r.deliveredAt && <span className="mt-0.5 block text-xs text-[hsl(var(--success))]">تحویل: {faDateTime(r.deliveredAt)}</span>}
                 </span>
                 {active && <span className="flex flex-col items-center justify-center gap-1 px-3 text-primary"><Ticket className="h-5 w-5" /><span className="text-[10px] font-bold">بلیط</span><ChevronLeft className="h-3.5 w-3.5" /></span>}
-              </button>
+              </button>{active && <TicketActions r={r} onDone={reload} />}</div>
             );
           })}
         </div>

@@ -7,6 +7,7 @@ import { makeEmployee, makeStaff, makeStudent, STAFF_PASSWORD } from '../helpers
  * Enumerates EVERY registered /api/v1 route and checks each role is allowed/denied exactly as the shared matrix says.
  * A route registered without an access declaration fails at boot (onRoute hook), so it can never slip through.
  */
+const DENIED = 'شما به این بخش دسترسی ندارید.';
 let t: Awaited<ReturnType<typeof testApp>>;
 const clients = new Map<Role, Client>();
 const routes: { method: string; url: string; access: string }[] = [];
@@ -20,12 +21,18 @@ beforeAll(async () => {
     await c.req('POST', '/api/v1/auth/staff/login', { username: u.username, password: STAFF_PASSWORD });
     clients.set(role, c);
   }
-  const s = await makeStudent(t.db); const sc = new Client(t.app, '10.9.20.1');
-  await sc.req('POST', '/api/v1/auth/student/login', { studentNumber: s.sn, nationalId: s.nid }); clients.set('Student', sc);
-  const e = await makeEmployee(t.db); const ec = new Client(t.app, '10.9.21.1');
-  await ec.req('POST', '/api/v1/auth/employee/login', { username: e.username, password: STAFF_PASSWORD }); clients.set('Employee', ec);
+  const s = await makeStudent(t.db);
+  const sc = new Client(t.app, '10.9.20.1');
+  await sc.req('POST', '/api/v1/auth/student/login', { studentNumber: s.sn, nationalId: s.nid });
+  clients.set('Student', sc);
+  const e = await makeEmployee(t.db);
+  const ec = new Client(t.app, '10.9.21.1');
+  await ec.req('POST', '/api/v1/auth/employee/login', { username: e.username, password: STAFF_PASSWORD });
+  clients.set('Employee', ec);
 });
-afterAll(async () => { await t.close(); });
+afterAll(async () => {
+  await t.close();
+});
 
 describe('role × route matrix', () => {
   it('has a non-empty registry and every route declares access', () => {
@@ -45,8 +52,9 @@ describe('role × route matrix', () => {
     for (const r of routes.filter((x) => x.access !== 'public' && x.access !== 'authenticated')) {
       for (const role of Object.keys(ROLE_PERMISSIONS) as Role[]) {
         const res = await clients.get(role)!.req(r.method as 'GET', r.url.replace(/:(\w+)/g, '00000000-0000-4000-8000-000000000000'), {});
-        if (hasPermission(role, r.access as Permission)) expect(res.status, `${role} ${r.method} ${r.url}`).not.toBe(403);
-        else expect(res.status, `${role} ${r.method} ${r.url}`).toBe(403);
+        const denied = res.status === 403 && res.body?.error?.message === DENIED;
+        if (hasPermission(role, r.access as Permission)) expect(denied, `${role} ${r.method} ${r.url}`).toBe(false);
+        else expect(denied, `${role} ${r.method} ${r.url} → ${res.status}`).toBe(true);
       }
     }
   });

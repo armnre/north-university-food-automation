@@ -61,3 +61,45 @@ export async function makeEmployee(db: Db, extra: Partial<typeof employees.$infe
   return e!;
 }
 export { randomUUID };
+
+import { sql } from 'drizzle-orm';
+import { postLedger, systemAccountId } from '../../src/services/ledger.js';
+import { saveOffering } from '../../src/routes/offerings.js';
+import { addDays, tehranDate } from '@food/shared';
+
+export async function credit(db: Db, accountId: string, amount: bigint) {
+  await db.transaction(async (tx) => {
+    const cash = await systemAccountId(tx, 'manual-cash');
+    await postLedger(tx, {
+      type: 'MANUAL_CASH',
+      idempotencyKey: `test-credit:${randomUUID()}`,
+      actor: 'test',
+      lines: [
+        { accountId, amount },
+        { accountId: cash, amount: -amount },
+      ],
+    });
+  });
+}
+
+/** Published lunch offering `days` ahead (default tomorrow) with prices per group. */
+export async function makeOffering(
+  db: Db,
+  o: { capacity?: number; student?: number; employee?: number | null; days?: number; deadlineMinutes?: number; cafeteriaId?: string } = {},
+) {
+  const food = (await db.execute<{ id: string }>(sql`INSERT INTO foods (name) VALUES (${`غذا ${uniq()}`}) RETURNING id`)).rows[0]!.id;
+  const date = addDays(tehranDate(), o.days ?? 1);
+  return db.transaction((tx) =>
+    saveOffering(tx, 'test', {
+      serviceDate: date,
+      mealType: 'Lunch',
+      foodId: food,
+      cafeteriaId: o.cafeteriaId,
+      capacity: o.capacity ?? 10,
+      notes: '',
+      active: true,
+      reserveDeadline: new Date(Date.now() + (o.deadlineMinutes ?? 60) * 60_000).toISOString(),
+      prices: { Student: o.student ?? 100_000, ...(o.employee === null ? {} : { Employee: o.employee ?? 150_000 }) },
+    }),
+  );
+}

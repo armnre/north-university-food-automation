@@ -110,14 +110,12 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
         sql`SELECT 1 FROM sessions WHERE subject_type='student' AND subject_id=${s.id} AND user_agent=${ua?.slice(0, 300) ?? ''} LIMIT 1`,
       );
       if (prev && known.rows.length === 0) {
-        await db
-          .insert(notifications)
-          .values({
-            accountId,
-            title: 'ورود از دستگاه جدید',
-            body: 'ورود به حساب شما از یک دستگاه یا مرورگر جدید انجام شد. اگر شما نبودید، به امور دانشجویی اطلاع دهید.',
-            kind: 'security',
-          });
+        await db.insert(notifications).values({
+          accountId,
+          title: 'ورود از دستگاه جدید',
+          body: 'ورود به حساب شما از یک دستگاه یا مرورگر جدید انجام شد. اگر شما نبودید، به امور دانشجویی اطلاع دهید.',
+          kind: 'security',
+        });
       }
     }
     await startSession(reply, 'student', s.id, ip, ua);

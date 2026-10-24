@@ -3,14 +3,26 @@ import { loadEnv } from '../../src/env.js';
 import { getClientIp } from '../../src/lib/ip.js';
 import type { FastifyRequest } from 'fastify';
 
-const base = { PUBLIC_BASE_URL: 'https://dining.example.ir', DATABASE_URL: 'postgres://x', NATIONAL_ID_PEPPER: 'p'.repeat(40), CSRF_SECRET: 'c'.repeat(40), UPLOAD_DIR: '/tmp/u' };
+const base = {
+  PUBLIC_BASE_URL: 'https://dining.example.ir',
+  DATABASE_URL: 'postgres://x',
+  NATIONAL_ID_PEPPER: 'p'.repeat(40),
+  CSRF_SECRET: 'c'.repeat(40),
+  UPLOAD_DIR: '/tmp/u',
+};
 
 describe('env validation', () => {
   it('refuses to boot without required keys', () => expect(() => loadEnv({})).toThrow(/Invalid environment/));
-  it('forbids sandbox gateway in production', () => expect(() => loadEnv({ ...base, NODE_ENV: 'production', ALLOW_SANDBOX_GATEWAY: 'true' })).toThrow(/sandbox/));
-  it('requires merchant when online payment is enabled in production', () => expect(() => loadEnv({ ...base, NODE_ENV: 'production', ONLINE_PAYMENT_ENABLED: 'true' })).toThrow(/ZARINPAL_MERCHANT_ID/));
+  it('forbids sandbox gateway in production', () =>
+    expect(() => loadEnv({ ...base, NODE_ENV: 'production', ALLOW_SANDBOX_GATEWAY: 'true' })).toThrow(/sandbox/));
+  it('requires merchant when online payment is enabled in production', () =>
+    expect(() => loadEnv({ ...base, NODE_ENV: 'production', ONLINE_PAYMENT_ENABLED: 'true' })).toThrow(/ZARINPAL_MERCHANT_ID/));
   it('never echoes secret values in the error', () => {
-    try { loadEnv({ ...base, NATIONAL_ID_PEPPER: 'short-secret' }); } catch (e) { expect(String(e)).not.toContain('short-secret'); }
+    try {
+      loadEnv({ ...base, NATIONAL_ID_PEPPER: 'short-secret' });
+    } catch (e) {
+      expect(String(e)).not.toContain('short-secret');
+    }
   });
 });
 

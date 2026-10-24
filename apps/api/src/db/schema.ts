@@ -209,6 +209,12 @@ export const foods = pgTable('foods', {
   category: text('category'),
   imagePath: text('image_path'),
   calories: integer('calories'),
+  defaultPriceRial: rial('default_price_rial'),
+  defaultCapacity: integer('default_capacity'),
+  suitableMeals: text('suitable_meals')
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   active: boolean('active').notNull().default(true),
   ...ts(),
 });
@@ -253,6 +259,7 @@ export const mealOfferings = pgTable(
     cancelDeadline: timestamp('cancel_deadline', { withTimezone: true }),
     mealStartsAt: timestamp('meal_starts_at', { withTimezone: true }).notNull(),
     mealEndsAt: timestamp('meal_ends_at', { withTimezone: true }).notNull(),
+    notes: text('notes').notNull().default(''),
     createdBy: uuid('created_by'),
     ...ts(),
   },

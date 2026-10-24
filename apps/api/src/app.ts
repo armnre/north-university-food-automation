@@ -12,6 +12,10 @@ import { AppError } from './lib/errors.js';
 import { getClientIp } from './lib/ip.js';
 import { authRoutes } from './routes/auth.js';
 import { systemRoutes } from './routes/system.js';
+import { meRoutes } from './routes/me.js';
+import { catalogRoutes } from './routes/catalog.js';
+import { offeringRoutes } from './routes/offerings.js';
+import { deliveryRoutes } from './routes/delivery.js';
 
 export type AppDeps = { env: Env; db: Db; pool: pg.Pool };
 
@@ -64,26 +68,29 @@ export async function buildApp({ env, db, pool }: AppDeps): Promise<FastifyInsta
     if (err instanceof AppError)
       return reply.status(err.status).send({ error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } });
     if (err instanceof ZodError)
-      return reply
-        .status(400)
-        .send({
-          error: {
-            code: 'BAD_REQUEST',
-            message: 'اطلاعات ارسالی معتبر نیست.',
-            details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
-          },
-        });
+      return reply.status(400).send({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'اطلاعات ارسالی معتبر نیست.',
+          details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
+        },
+      });
     const status = (err as { statusCode?: number }).statusCode;
     if (status === 429)
       return reply.status(429).send({ error: { code: 'TOO_MANY_REQUESTS', message: 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.' } });
     if (status === 413) return reply.status(413).send({ error: { code: 'BAD_REQUEST', message: 'حجم درخواست بیش از حد مجاز است.' } });
     if (status && status < 500) return reply.status(status).send({ error: { code: 'BAD_REQUEST', message: 'درخواست نامعتبر است.' } });
     req.log.error({ err }, 'unhandled error');
+    if (process.env.DEBUG_ERRORS) console.error('UNHANDLED', err);
     return reply.status(500).send({ error: { code: 'INTERNAL', message: 'خطای داخلی سرور. لطفاً دوباره تلاش کنید.' } });
   });
 
   registerAuth(app, db, { publicOrigin: new URL(env.PUBLIC_BASE_URL).origin, secureCookies: env.NODE_ENV !== 'test' });
   systemRoutes(app, pool);
   authRoutes(app, db, env);
+  meRoutes(app, db);
+  catalogRoutes(app, db);
+  offeringRoutes(app, db);
+  deliveryRoutes(app, db);
   return app;
 }

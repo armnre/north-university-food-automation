@@ -703,35 +703,55 @@ describe('تحویل و QR', () => {
     expect((fresh.body as { state: string }).state).toBe('ready');
   });
 
-  it('فهرست آفلاین فقط hash توکن را برمی‌گرداند و همگام‌سازی idempotent است', async () => {
+  it('فهرست آفلاین فقط hash توکن را برمی‌گرداند (هرگز توکن یا کد خام ندارد) و همگام‌سازی idempotent است', async () => {
     const { offering, qrToken, reservationId } = await reserveAndLogin();
+    const codeRows = await query<{ code: string }>(db, `SELECT code FROM reservations WHERE id = $1`, [reservationId]);
+    const rawCode = codeRows[0]!.code;
+    const shortCode = rawCode.replace(/^R-/, '');
 
     const operator = await createStaff(db, { role: 'Operator', cafeteriaId: offering.cafeteriaId });
     const opClient = await loginStaff(ctx.app, operator.username, operator.password);
 
-    const manifest = await opClient.get<{ reservations: { reservationId: string; qrTokenHash: string }[] }>(
-      '/api/v1/delivery/offline-manifest',
-    );
+    const manifest = await opClient.get<{
+      reservations: { reservationId: string; qrTokenHash: string; codeHash: string; holderName: string; foodName: string }[];
+    }>('/api/v1/delivery/offline-manifest');
     expect(manifest.status).toBe(200);
-    const list = (manifest.body as { reservations: { reservationId: string; qrTokenHash: string }[] }).reservations;
+    const list = manifest.body.reservations;
     expect(list.length).toBe(1);
     expect(list[0]!.qrTokenHash).not.toBe(qrToken);
+    expect(list[0]!.codeHash).not.toBe(rawCode);
+    expect(list[0]!.codeHash).not.toBe(shortCode);
+    // هیچ توکن QR یا کد ۸ کاراکتری خامی در بدنهٔ مانیفست وجود ندارد
     expect(manifest.raw).not.toContain(qrToken);
+    expect(manifest.raw).not.toContain(rawCode);
+    expect(manifest.raw).not.toContain(shortCode);
 
+    // همگام‌سازی هم با codeHash (اسکن کد ۸ کاراکتری در حالت آفلاین) و هم ثبت اسکن نامعتبر بدون تحویل
+    const invalidEvent = {
+      clientEventId: randomHex(12),
+      reservationId: null,
+      qrTokenHash: randomHex(32),
+      scannedAt: new Date().toISOString(),
+      deviceId: 'test-device',
+      localOutcome: 'InvalidOffline' as const,
+    };
     const event = {
       clientEventId: randomHex(12),
       reservationId: list[0]!.reservationId,
-      qrTokenHash: list[0]!.qrTokenHash,
+      qrTokenHash: list[0]!.codeHash,
       scannedAt: new Date().toISOString(),
       deviceId: 'test-device',
+      localOutcome: 'ProvisionalAccepted' as const,
     };
-    const sync = await opClient.post('/api/v1/delivery/sync', { events: [event] });
+    const sync = await opClient.post('/api/v1/delivery/sync', { events: [invalidEvent, event] });
     expect(sync.status).toBe(200);
-    expect((sync.body as { accepted: number }).accepted).toBe(1);
+    expect((sync.body as { accepted: number; invalid: number }).accepted).toBe(1);
+    expect((sync.body as { accepted: number; invalid: number }).invalid).toBe(1);
 
-    // تکرار همان رویداد ⇒ duplicate، بدون اثر دوم
-    const again = await opClient.post('/api/v1/delivery/sync', { events: [event] });
-    expect((again.body as { accepted: number }).accepted).toBe(0);
+    // تکرار همان رویدادها ⇒ duplicate، بدون اثر دوم
+    const again = await opClient.post('/api/v1/delivery/sync', { events: [invalidEvent, event] });
+    expect((again.body as { accepted: number; duplicate: number }).accepted).toBe(0);
+    expect((again.body as { accepted: number; duplicate: number }).duplicate).toBe(2);
     const statuses = await query<{ status: string }>(db, `SELECT status FROM reservations WHERE id = $1`, [reservationId]);
     expect(statuses[0]?.status).toBe('Delivered');
   });
@@ -756,6 +776,68 @@ describe('تحویل و QR', () => {
     expect(qrToken).toBeTruthy();
     const conflicts = await query<{ n: number }>(db, `SELECT COUNT(*)::int AS n FROM deliveries WHERE outcome = 'OfflineConflict'`);
     expect(conflicts[0]?.n).toBe(1);
+  });
+
+  it('دو دستگاه آفلاین که یک بلیت واحد را اسکن می‌کنند: اولی Accepted و دومی OfflineConflict + ثبت در گزارش تعارض‌ها', async () => {
+    const { offering, reservationId } = await reserveAndLogin();
+    const op1 = await createStaff(db, { username: 'op.off.1', role: 'Operator', cafeteriaId: offering.cafeteriaId });
+    const op2 = await createStaff(db, { username: 'op.off.2', role: 'Operator', cafeteriaId: offering.cafeteriaId });
+    const admin = await createStaff(db, { username: 'nm.off', role: 'NutritionManager' });
+
+    const client1 = await loginStaff(ctx.app, op1.username, op1.password);
+    const client2 = await loginStaff(ctx.app, op2.username, op2.password);
+    const adminClient = await loginStaff(ctx.app, admin.username, admin.password);
+
+    // هر دو دستگاه قبل از قطع اینترنت مانیفست یکسان را دریافت کرده‌اند
+    const m1 = await client1.get<{ reservations: { qrTokenHash: string }[] }>('/api/v1/delivery/offline-manifest');
+    const m2 = await client2.get<{ reservations: { qrTokenHash: string }[] }>('/api/v1/delivery/offline-manifest');
+    const hash = m1.body.reservations[0]!.qrTokenHash;
+    expect(m2.body.reservations[0]!.qrTokenHash).toBe(hash);
+
+    // دستگاه اول آنلاین می‌شود و صف خود را می‌فرستد ⇒ تحویل موفق
+    const sync1 = await client1.post<{ accepted: number; conflict: number }>('/api/v1/delivery/sync', {
+      events: [
+        {
+          clientEventId: randomHex(12),
+          reservationId,
+          qrTokenHash: hash,
+          scannedAt: new Date(Date.now() - 60_000).toISOString(),
+          deviceId: 'device-alpha',
+          localOutcome: 'ProvisionalAccepted',
+        },
+      ],
+    });
+    expect(sync1.status).toBe(200);
+    expect(sync1.body.accepted).toBe(1);
+    expect(sync1.body.conflict).toBe(0);
+
+    // دستگاه دوم پس از آن آنلاین می‌شود ⇒ OfflineConflict ثبت می‌شود
+    const sync2 = await client2.post<{ accepted: number; conflict: number; results: { outcome: string }[] }>('/api/v1/delivery/sync', {
+      events: [
+        {
+          clientEventId: randomHex(12),
+          reservationId,
+          qrTokenHash: hash,
+          scannedAt: new Date(Date.now() - 30_000).toISOString(),
+          deviceId: 'device-beta',
+          localOutcome: 'ProvisionalAccepted',
+        },
+      ],
+    });
+    expect(sync2.status).toBe(200);
+    expect(sync2.body.accepted).toBe(0);
+    expect(sync2.body.conflict).toBe(1);
+    expect(sync2.body.results[0]?.outcome).toBe('OfflineConflict');
+
+    // مدیر تغذیه تعارض را در مسیر مدیریتی مشاهده می‌کند
+    const conflictsRes = await adminClient.get<{
+      conflicts: Array<{ reservationId: string | null; deviceId: string; outcome: string; holderName: string }>;
+    }>('/api/v1/delivery/offline-conflicts');
+    expect(conflictsRes.status).toBe(200);
+    const matched = conflictsRes.body.conflicts.find((c) => c.reservationId === reservationId && c.deviceId === 'device-beta');
+    expect(matched).toBeDefined();
+    expect(matched?.outcome).toBe('OfflineConflict');
+    expect(matched?.holderName).toBeTruthy();
   });
 });
 

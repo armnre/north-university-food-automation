@@ -19,7 +19,7 @@ import { getEnv, type AppEnv } from './config/env.js';
 import { createLogger, createSilentLogger } from './lib/logger.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerSecurity } from './plugins/security.js';
-import { registerAuth } from './plugins/auth.js';
+import { normalizeRouteKey, registerAuth } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { adminRoutes } from './routes/admin.routes.js';
@@ -53,6 +53,7 @@ export type AppInstance = FastifyInstance<
   ZodTypeProvider
 > & {
   deps: ServiceDeps;
+  registeredRoutes: ReadonlySet<string>;
 };
 
 /**
@@ -98,6 +99,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstan
 
   const webDist = env.SERVE_STATIC ? resolve(process.cwd(), env.WEB_DIST_PATH || '../web/dist') : null;
   const serveSpaFallback = Boolean(webDist && existsSync(webDist));
+
+  const registeredRoutes = new Set<string>();
+  app.decorate('registeredRoutes', registeredRoutes);
+  app.addHook('onRoute', (routeOptions) => {
+    const methods = Array.isArray(routeOptions.method) ? routeOptions.method : [routeOptions.method];
+    for (const m of methods) {
+      if (m === 'HEAD' || m === 'OPTIONS') continue;
+      registeredRoutes.add(normalizeRouteKey(m, routeOptions.url));
+    }
+  });
 
   await registerSecurity(app, deps);
   await registerErrorHandler(app, deps, { serveSpaFallback });

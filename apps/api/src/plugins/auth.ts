@@ -4,7 +4,6 @@ import { AppError } from '../lib/errors.js';
 import { getClientIp } from '../lib/request-context.js';
 import { resolveSessionCookieName } from '../lib/cookies.js';
 import { resolveAuthContext } from '../services/auth.service.js';
-import { findValidSession, touchSession } from '../services/session.service.js';
 import type { AuthContext, ServiceDeps } from '../types.js';
 
 declare module 'fastify' {
@@ -25,6 +24,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     auth: AuthContext | null;
     clientIp: string;
+    /** آیا یک نگهبان صریح احراز هویت/مجوز روی این درخواست اجرا شده است؟ */
+    authzChecked: boolean;
   }
 }
 
@@ -38,6 +39,29 @@ const MUST_CHANGE_PASSWORD_ALLOWED = new Set([
   '/api/v1/auth/setup-status',
 ]);
 
+/**
+ * فهرست صریح و منجمد مسیرهای عمومی مجاز زیر `/api/v1/*`.
+ * هر مسیر `/api/v1/*` خارج از این فهرست که بدون نگهبان مجوز (`authenticate` / `requireCustomer` /
+ * `requireStaff` / `requirePermission`) ثبت شود، به‌صورت **Fail-Closed** با خطای `403` مسدود می‌شود.
+ */
+export const PUBLIC_API_V1_ROUTES: ReadonlySet<string> = new Set([
+  'GET /api/v1/auth/setup-status',
+  'POST /api/v1/auth/setup-admin',
+  'GET /api/v1/auth/captcha',
+  'POST /api/v1/auth/student/login',
+  'POST /api/v1/auth/staff/login',
+  'POST /api/v1/auth/employee/login',
+  'POST /api/v1/auth/logout',
+  'GET /api/v1/payments/zarinpal/callback',
+  'GET /api/v1/payments/sandbox/redirect',
+  'GET /api/v1/payments/status',
+]);
+
+export function normalizeRouteKey(method: string, routeUrl: string): string {
+  const cleanPath = routeUrl.split('?')[0]?.replace(/\/+$/, '') || '/';
+  return `${method.toUpperCase()} ${cleanPath}`;
+}
+
 /** توکن نشست از کوکی HttpOnly (sessionStorage و هدر Authorization حذف شده‌اند). */
 export function readSessionToken(request: FastifyRequest, deps: ServiceDeps): string {
   const name = resolveSessionCookieName(deps.env);
@@ -47,6 +71,7 @@ export function readSessionToken(request: FastifyRequest, deps: ServiceDeps): st
 export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Promise<void> {
   app.decorateRequest('auth', null);
   app.decorateRequest('clientIp', '');
+  app.decorateRequest('authzChecked', false);
 
   app.addHook('onRequest', async (request) => {
     request.clientIp = getClientIp(request, deps.env.TRUSTED_PROXY_HOPS);
@@ -55,13 +80,10 @@ export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Pro
   app.decorate('authenticate', async (request: FastifyRequest) => {
     const token = readSessionToken(request, deps);
     if (!token) throw new AppError('UNAUTHORIZED', ERROR_MESSAGES_FA.UNAUTHORIZED);
-    const auth = await resolveAuthContext(deps, token);
+    const auth = await resolveAuthContext(deps, token, { touch: true });
     if (!auth) throw new AppError('SESSION_EXPIRED', ERROR_MESSAGES_FA.SESSION_EXPIRED);
     request.auth = auth;
-
-    // تمدید لغزان نشست (بدون بلوکه کردن پاسخ)
-    const session = await findValidSession(deps, token);
-    if (session) void touchSession(deps, session).catch(() => undefined);
+    request.authzChecked = true;
   });
 
   app.decorate('optionalAuth', async (request: FastifyRequest) => {
@@ -75,6 +97,7 @@ export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Pro
     if (!request.auth || request.auth.kind === 'staff') {
       throw new AppError('FORBIDDEN', 'این بخش مخصوص دانشجویان و کارمندان دانشگاه است.');
     }
+    request.authzChecked = true;
   });
 
   app.decorate('requireStaff', async (request: FastifyRequest) => {
@@ -86,6 +109,7 @@ export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Pro
     if (request.auth.mustChangePassword && !MUST_CHANGE_PASSWORD_ALLOWED.has(path)) {
       throw new AppError('FORBIDDEN', 'برای ادامه باید رمز عبور موقت را تغییر دهید.', { mustChangePassword: true });
     }
+    request.authzChecked = true;
   });
 
   app.decorate(
@@ -100,6 +124,24 @@ export async function registerAuth(app: FastifyInstance, deps: ServiceDeps): Pro
         request.log.warn({ role: auth.role, required, path: request.url }, 'دسترسی رد شد');
         throw new AppError('FORBIDDEN', ERROR_MESSAGES_FA.FORBIDDEN);
       }
+      request.authzChecked = true;
     },
   );
+
+  // نگهبان سراسری Fail-Closed: هر مسیر ثبت‌شده زیر `/api/v1/` که نه عمومی مجاز باشد و نه نگهبان مجوز اجرا کرده باشد، با ۴۰۳ رد می‌شود.
+  app.addHook('preHandler', async (request) => {
+    const registeredPattern = request.routeOptions?.url;
+    if (!registeredPattern) return;
+    const cleanRoute = registeredPattern.replace(/\/+$/, '') || '/';
+    if (!cleanRoute.startsWith('/api/v1/')) return;
+    const key = normalizeRouteKey(request.method, cleanRoute);
+    if (PUBLIC_API_V1_ROUTES.has(key)) return;
+    if (!request.authzChecked) {
+      request.log.error(
+        { method: request.method, route: cleanRoute, url: request.url },
+        'مسیر فاقد مجوز صریح توسط نگهبان Fail-Closed مسدود شد',
+      );
+      throw new AppError('FORBIDDEN', ERROR_MESSAGES_FA.FORBIDDEN);
+    }
+  });
 }

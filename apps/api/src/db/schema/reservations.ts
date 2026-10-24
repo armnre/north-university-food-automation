@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, date, index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, date, index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { accounts, staffUsers } from './identity.js';
 import { cafeterias, mealOfferings, mealSlots } from './catalog.js';
 import { createdAt, id, updatedAt } from './base.js';
@@ -136,3 +136,22 @@ export const deliveries = pgTable(
 
 export type ReservationRow = typeof reservations.$inferSelect;
 export type DeliveryRow = typeof deliveries.$inferSelect;
+
+/** ثبت یکتای ارسال یادآوری وعده برای جلوگیری از ارسال تکراری (idempotent). */
+export const reservationReminders = pgTable(
+  'reservation_reminders',
+  {
+    id: id(),
+    reservationId: uuid('reservation_id')
+      .notNull()
+      .references(() => reservations.id, { onDelete: 'cascade' }),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    smsQueued: boolean('sms_queued').notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex('reservation_reminders_reservation_id_key').on(t.reservationId),
+    index('reservation_reminders_sent_at_idx').on(t.sentAt),
+  ],
+);
+
+export type ReservationReminderRow = typeof reservationReminders.$inferSelect;

@@ -1,0 +1,13 @@
+[Unit]
+Description=North University Food Automation Monthly Restore Drill (food_restore_test)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/food/app.env
+ExecStart=/opt/food/restore-drill.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=food-restore-drill

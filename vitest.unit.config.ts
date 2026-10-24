@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
-    include: ['apps/api/test/unit/**/*.test.ts', 'packages/shared/test/**/*.test.ts'],
+    include: ['apps/api/test/unit/**/*.test.ts', 'apps/web/test/**/*.test.ts', 'packages/shared/test/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     environment: 'node',
     globals: false,

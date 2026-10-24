@@ -39,6 +39,7 @@ export type AuthContext =
       status: StudentStatus;
       customerGroup: 'Student';
       balanceRial: number;
+      lastLoginAt: Date | null;
     }
   | {
       kind: 'employee';

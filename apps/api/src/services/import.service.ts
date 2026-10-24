@@ -6,7 +6,6 @@ import { hmacSha256Hex, sha256Hex } from '../lib/crypto.js';
 import { AppError, fail } from '../lib/errors.js';
 import type { Actor, ServiceDeps } from '../types.js';
 import { writeAudit } from './audit.service.js';
-import { ensureStudentAccount } from './account.service.js';
 import { revokeAllSessionsForSubject } from './session.service.js';
 import { rawSql } from '../db/raw.js';
 
@@ -21,7 +20,7 @@ import { rawSql } from '../db/raw.js';
  *  - فایل خام نگهداری نمی‌شود.
  */
 
-export const MAX_IMPORT_ROWS = 10_000;
+export const MAX_IMPORT_ROWS = 25_000;
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 export type ParsedRow = {
@@ -513,39 +512,56 @@ export async function commitImport(
     let conflictsSkipped = 0;
     let sessionsRevoked = 0;
 
+    const actionableRows: typeof rows = [];
     for (const row of rows) {
       if (row.kind === 'error' || row.kind === 'unchanged') continue;
       if (row.kind === 'conflict' && !approved.has(row.rowNumber)) {
         conflictsSkipped += 1;
         continue;
       }
+      actionableRows.push(row);
+    }
 
-      const existingRows = await tx
-        .select()
-        .from(students)
-        .where(sql`${students.studentNumber} = ${row.studentNumber}`)
-        .limit(1);
-      const existing = existingRows[0];
+    if (actionableRows.length > 0) {
+      const targetNumbers = actionableRows.map((r) => r.studentNumber);
+      const existingQuery = await tx.execute(
+        rawSql(
+          `SELECT id, student_number AS "studentNumber", status, removed_at AS "removedAt"
+           FROM students
+           WHERE student_number = ANY($1::text[])`,
+          [targetNumbers],
+        ),
+      );
+      const existingMap = new Map<string, { id: string; status: string; removedAt: Date | null }>();
+      for (const ex of ((existingQuery as unknown as { rows: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[]) {
+        existingMap.set(String(ex.studentNumber), {
+          id: String(ex.id),
+          status: String(ex.status ?? 'Active'),
+          removedAt: ex.removedAt instanceof Date ? ex.removedAt : ex.removedAt ? new Date(String(ex.removedAt)) : null,
+        });
+      }
 
-      if (!existing) {
-        const [inserted] = await tx
+      const toInsert: typeof rows = [];
+      const toUpdate: Array<(typeof rows)[number] & { existingId: string; wasRemoved: boolean }> = [];
+
+      for (const row of actionableRows) {
+        const ex = existingMap.get(row.studentNumber);
+        if (!ex) {
+          toInsert.push(row);
+        } else {
+          toUpdate.push({ ...row, existingId: ex.id, wasRemoved: ex.status === 'Removed' });
+        }
+      }
+
+      const chunkSize = 500;
+      const now = new Date();
+      for (let i = 0; i < toInsert.length; i += chunkSize) {
+        const chunk = toInsert.slice(i, i + chunkSize);
+        const inserted = await tx
           .insert(students)
-          .values({
-            studentNumber: row.studentNumber,
-            fullName: row.fullName,
-            faculty: row.faculty,
-            major: row.major,
-            degree: row.degree,
-            entryYear: row.entryYear,
-            nationalIdHash: row.nationalIdHash,
-            nationalIdLast4: row.nationalIdLast4,
-            status: 'Active',
-            addedAt: new Date(),
-            lastImportBatchId: input.batchId,
-          })
-          .onConflictDoUpdate({
-            target: students.studentNumber,
-            set: {
+          .values(
+            chunk.map((row) => ({
+              studentNumber: row.studentNumber,
               fullName: row.fullName,
               faculty: row.faculty,
               major: row.major,
@@ -554,32 +570,104 @@ export async function commitImport(
               nationalIdHash: row.nationalIdHash,
               nationalIdLast4: row.nationalIdLast4,
               status: 'Active',
+              addedAt: now,
+              lastImportBatchId: input.batchId,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: students.studentNumber,
+            set: {
+              fullName: sql`excluded.full_name`,
+              faculty: sql`excluded.faculty`,
+              major: sql`excluded.major`,
+              degree: sql`excluded.degree`,
+              entryYear: sql`excluded.entry_year`,
+              nationalIdHash: sql`excluded.national_id_hash`,
+              nationalIdLast4: sql`excluded.national_id_last4`,
+              status: 'Active',
               removedAt: null,
               lastImportBatchId: input.batchId,
             },
           })
           .returning({ id: students.id });
-        await ensureStudentAccount(tx, inserted!.id);
-        created += 1;
-      } else {
+
+        if (inserted.length > 0) {
+          await tx
+            .insert(accounts)
+            .values(
+              inserted.map((s) => ({
+                kind: 'Student',
+                studentId: s.id,
+                customerGroup: 'Student',
+                balanceRial: 0,
+                isActive: true,
+              })),
+            )
+            .onConflictDoNothing({ target: accounts.studentId });
+        }
+        created += chunk.length;
+      }
+
+      for (let i = 0; i < toUpdate.length; i += chunkSize) {
+        const chunk = toUpdate.slice(i, i + chunkSize);
+        const ids = chunk.map((r) => r.existingId);
+        const fullNames = chunk.map((r) => r.fullName);
+        const faculties = chunk.map((r) => r.faculty);
+        const majors = chunk.map((r) => r.major);
+        const degrees = chunk.map((r) => r.degree);
+        const entryYears = chunk.map((r) => r.entryYear);
+        const hashes = chunk.map((r) => r.nationalIdHash);
+        const last4s = chunk.map((r) => r.nationalIdLast4);
+
+        await tx.execute(
+          rawSql(
+            `UPDATE students AS s
+             SET full_name = u.full_name,
+                 faculty = u.faculty,
+                 major = u.major,
+                 degree = u.degree,
+                 entry_year = u.entry_year,
+                 national_id_hash = u.national_id_hash,
+                 national_id_last4 = u.national_id_last4,
+                 status = CASE WHEN s.status = 'Removed' THEN 'Active' ELSE s.status END,
+                 removed_at = CASE WHEN s.status = 'Removed' THEN NULL ELSE s.removed_at END,
+                 last_import_batch_id = $9::uuid,
+                 updated_at = now()
+             FROM unnest(
+               $1::uuid[],
+               $2::text[],
+               $3::text[],
+               $4::text[],
+               $5::text[],
+               $6::int[],
+               $7::text[],
+               $8::text[]
+             ) AS u(id, full_name, faculty, major, degree, entry_year, national_id_hash, national_id_last4)
+             WHERE s.id = u.id`,
+            [ids, fullNames, faculties, majors, degrees, entryYears, hashes, last4s, input.batchId],
+          ),
+        );
+
         await tx
-          .update(students)
-          .set({
-            fullName: row.fullName,
-            faculty: row.faculty,
-            major: row.major,
-            degree: row.degree,
-            entryYear: row.entryYear,
-            nationalIdHash: row.nationalIdHash,
-            nationalIdLast4: row.nationalIdLast4,
-            // ورودسازی هرگز یک دانشجو را بی‌صدا فعال مجدد نمی‌کند، مگر اینکه Removed بوده باشد
-            status: existing.status === 'Removed' ? 'Active' : existing.status,
-            removedAt: existing.status === 'Removed' ? null : existing.removedAt,
-            lastImportBatchId: input.batchId,
-          })
-          .where(sql`${students.id} = ${existing.id}`);
-        await ensureStudentAccount(tx, existing.id);
-        updated += 1;
+          .insert(accounts)
+          .values(
+            ids.map((studentId) => ({
+              kind: 'Student',
+              studentId,
+              customerGroup: 'Student',
+              balanceRial: 0,
+              isActive: true,
+            })),
+          )
+          .onConflictDoNothing({ target: accounts.studentId });
+
+        const reactivatedIds = chunk.filter((r) => r.wasRemoved).map((r) => r.existingId);
+        if (reactivatedIds.length > 0) {
+          await tx.execute(
+            rawSql(`UPDATE accounts SET is_active = true, updated_at = now() WHERE student_id = ANY($1::uuid[])`, [reactivatedIds]),
+          );
+        }
+        updated += chunk.length;
       }
     }
 
@@ -593,17 +681,22 @@ export async function commitImport(
         ]),
       );
       const missingIds = (((missingResult as unknown as { rows: { id: string }[] }).rows ?? []) as { id: string }[]).map((r) => r.id);
-      for (const id of missingIds) {
-        await tx
-          .update(students)
-          .set({ status: 'Removed', removedAt: new Date(), lastImportBatchId: input.batchId })
-          .where(sql`${students.id} = ${id}`);
-        await tx
-          .update(accounts)
-          .set({ isActive: false })
-          .where(sql`${accounts.studentId} = ${id}`);
-        sessionsRevoked += await revokeAllSessionsForSubject(tx, 'Student', id, 'removed_by_full_sync');
-        removed += 1;
+      if (missingIds.length > 0) {
+        await tx.execute(
+          rawSql(
+            `UPDATE students
+             SET status = 'Removed', removed_at = now(), last_import_batch_id = $2::uuid, updated_at = now()
+             WHERE id = ANY($1::uuid[])`,
+            [missingIds, input.batchId],
+          ),
+        );
+        await tx.execute(
+          rawSql(`UPDATE accounts SET is_active = false, updated_at = now() WHERE student_id = ANY($1::uuid[])`, [missingIds]),
+        );
+        for (const id of missingIds) {
+          sessionsRevoked += await revokeAllSessionsForSubject(tx, 'Student', id, 'removed_by_full_sync');
+        }
+        removed = missingIds.length;
       }
     }
 

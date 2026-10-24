@@ -15,6 +15,7 @@ import {
   createOffering,
   createStaff,
   createStudent,
+  makeNationalId,
   resetBaseCache,
   seedBase,
 } from '../../api/test/helpers/fixtures.js';
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
   await createStudent(db, {
     studentNumber: '402123456',
     fullName: 'سارا محمدی',
-    nationalId: '0010000011',
+    nationalId: makeNationalId(1),
     balanceRial: 300_000,
     pepper,
   });
@@ -117,6 +118,11 @@ async function main(): Promise<void> {
     username: 'superadmin1',
     password: 'SuperAdmin#2026!',
     role: 'SuperAdmin',
+  });
+  await createStaff(db, {
+    username: 'affairs1',
+    password: 'Affairs#2026!',
+    role: 'StudentAffairs',
   });
   await createStaff(db, {
     username: 'operator1',
@@ -143,6 +149,9 @@ async function main(): Promise<void> {
       WEB_DIST_PATH: webDist,
       ONLINE_PAYMENT_ENABLED: 'true',
       ALLOW_SANDBOX_GATEWAY: 'true',
+      RATE_LIMIT_AUTH_MAX: '500',
+      RATE_LIMIT_WRITE_MAX: '2000',
+      RATE_LIMIT_READ_MAX: '5000',
     }) as NodeJS.ProcessEnv,
   );
   if (!envParsed.ok) throw new Error(envParsed.issues.join(' | '));

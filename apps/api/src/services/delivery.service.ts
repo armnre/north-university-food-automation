@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { formatFaDateTime, formatFaTime, isFutureServiceDate, isPastServiceDate, tehranToday } from '@food/shared';
+import { formatFaDateTime, formatFaTime, isFutureServiceDate, isPastServiceDate, normalizeDeliveryToken, tehranToday } from '@food/shared';
 import { deliveries, reservations, reservationHistory } from '../db/schema/index.js';
 import { sha256Hex } from '../lib/crypto.js';
 import { AppError, fail } from '../lib/errors.js';
@@ -85,23 +85,17 @@ type RawReservation = {
 
 /** یافتن رزرو از توکن QR (۴۸ hex) یا کد تحویل دستی (۸ کاراکتر، با/بدون «R-»). */
 async function findReservation(target: Tx | ServiceDeps['db'], rawToken: string): Promise<RawReservation | null> {
-  const token = String(rawToken ?? '').trim();
-  if (!token) return null;
+  const normalized = normalizeDeliveryToken(rawToken);
+  if (!normalized) return null;
 
-  const isQr = /^[a-f0-9]{48}$/i.test(token);
   let sqlFragment: string;
   let params: unknown[];
-  if (isQr) {
+  if (normalized.kind === 'qr') {
     sqlFragment = `r.qr_token = $1`;
-    params = [token.toLowerCase()];
+    params = [normalized.canonical];
   } else {
-    const code = token
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .replace(/^R(?=[A-Z0-9]{8,12}$)/, '');
-    if (!/^[A-Z0-9]{8,12}$/.test(code)) return null;
     sqlFragment = `r.code = $1`;
-    params = [`R-${code}`];
+    params = [`R-${normalized.canonical}`];
   }
 
   const result = await target.execute(
@@ -650,10 +644,19 @@ export async function offlineManifest(deps: ServiceDeps, auth: Extract<AuthConte
         slotEndTime: String(row.slotEndTime ?? ''),
       };
       const window = computeScanWindow(windowRow, settings);
+      const rawQr = String(row.qrToken ?? '')
+        .trim()
+        .toLowerCase();
+      const normalizedCode = normalizeDeliveryToken(String(row.code ?? ''));
+      const codeCanonical =
+        normalizedCode?.canonical ??
+        String(row.code ?? '')
+          .replace(/^R-/, '')
+          .toUpperCase();
       return {
         reservationId: String(row.id),
-        code: String(row.code ?? ''),
-        qrTokenHash: sha256Hex(String(row.qrToken ?? '')),
+        qrTokenHash: sha256Hex(rawQr),
+        codeHash: sha256Hex(codeCanonical),
         holderName: String(row.holderName ?? ''),
         holderIdentifier: String(row.holderIdentifier ?? ''),
         foodName: String(row.foodName ?? ''),
@@ -667,18 +670,20 @@ export async function offlineManifest(deps: ServiceDeps, auth: Extract<AuthConte
 
 export type OfflineEvent = {
   clientEventId: string;
-  reservationId: string;
+  reservationId?: string | null;
   qrTokenHash: string;
   scannedAt: string;
   deviceId: string;
+  localOutcome?: 'ProvisionalAccepted' | 'DuplicateLocal' | 'InvalidOffline';
 };
 
 /**
  * همگام‌سازی صف آفلاین — idempotent.
  * سرور «برنده» را بر اساس وضعیت فعلی تعیین می‌کند:
  *  - اگر رزرو در فاصلهٔ آفلاین لغو شده باشد ⇒ `OfflineConflict` برای بررسی
- *  - اگر هم‌زمان سلف دیگری تحویل داده باشد ⇒ `OfflineConflict`
- *  - اگر hash توکن مطابقت نکند (QR بازصدور شده) ⇒ `Invalid`
+ *  - اگر هم‌زمان دستگاه یا سلف دیگری تحویل داده باشد ⇒ `OfflineConflict`
+ *  - اگر hash توکن/کد مطابقت نکند (QR بازصدور شده) ⇒ `OfflineConflict` (اگر پذیرش موقت بوده) یا `Invalid`
+ *  - اسکن‌های نامعتبر یا تکراری محلی نیز بدون تغییر وضعیت رزرو برای ممیزی ثبت می‌شوند.
  */
 export async function syncOfflineScans(
   deps: ServiceDeps,
@@ -700,11 +705,35 @@ export async function syncOfflineScans(
   for (const event of input.events.slice(0, 500)) {
     const outcome = await deps.db.transaction(async (tx) => {
       const existing = await tx.execute(
-        rawSql(`SELECT id, outcome FROM deliveries WHERE client_event_id = $1 LIMIT 1`, [event.clientEventId]),
+        rawSql(`SELECT id, outcome, message FROM deliveries WHERE client_event_id = $1 LIMIT 1`, [event.clientEventId]),
       );
-      const existingRow = ((existing as unknown as { rows: { id: string; outcome: string }[] }).rows ?? [])[0];
+      const existingRow = ((existing as unknown as { rows: { id: string; outcome: string; message: string }[] }).rows ?? [])[0];
       if (existingRow) {
-        return { outcome: existingRow.outcome, message: 'این رویداد قبلاً ثبت شده است.', replay: true };
+        return { outcome: existingRow.outcome, message: existingRow.message || 'این رویداد قبلاً ثبت شده است.', replay: true };
+      }
+
+      const scannedDate = new Date(event.scannedAt);
+      const scopedCafeteria = effectiveCafeteria(op);
+
+      // رویدادی که در خود دستگاه آفلاین رد شده است (نامعتبر یا اسکن دوم در همان دستگاه) — فقط ثبت ممیزی، بدون تحویل غذا
+      if (event.localOutcome === 'InvalidOffline' || event.localOutcome === 'DuplicateLocal' || !event.reservationId) {
+        const auditOutcome = event.localOutcome === 'DuplicateLocal' ? 'Duplicate' : 'Invalid';
+        const auditMsg =
+          event.localOutcome === 'DuplicateLocal'
+            ? 'اسکن تکراری در حالت آفلاین روی همان دستگاه رد شد'
+            : 'اسکن نامعتبر در حالت آفلاین رد شد';
+        await logAttempt(tx, {
+          reservationId: event.reservationId ?? null,
+          operator: op,
+          cafeteriaId: scopedCafeteria,
+          outcome: auditOutcome,
+          message: auditMsg,
+          clientEventId: event.clientEventId,
+          deviceId: event.deviceId,
+          scannedAt: scannedDate,
+          source: 'OfflineSync',
+        });
+        return { outcome: auditOutcome, message: auditMsg };
       }
 
       const reservation = await tx
@@ -713,15 +742,54 @@ export async function syncOfflineScans(
         .where(sql`${reservations.id} = ${event.reservationId}`)
         .limit(1);
       const row = reservation[0];
-      if (!row) return { outcome: 'Invalid', message: 'رزرو یافت نشد.' };
+      if (!row) {
+        await logAttempt(tx, {
+          reservationId: null,
+          operator: op,
+          cafeteriaId: scopedCafeteria,
+          outcome: 'Invalid',
+          message: 'رزرو یافت نشد (همگام‌سازی آفلاین)',
+          clientEventId: event.clientEventId,
+          deviceId: event.deviceId,
+          scannedAt: scannedDate,
+          source: 'OfflineSync',
+        });
+        return { outcome: 'Invalid', message: 'رزرو یافت نشد.' };
+      }
 
-      const scopedCafeteria = effectiveCafeteria(op);
       if (scopedCafeteria && scopedCafeteria !== row.cafeteriaId) {
+        await logAttempt(tx, {
+          reservationId: row.id,
+          operator: op,
+          cafeteriaId: scopedCafeteria,
+          outcome: 'WrongCafeteria',
+          message: 'تلاش همگام‌سازی برای رزرو سلف دیگر',
+          clientEventId: event.clientEventId,
+          deviceId: event.deviceId,
+          scannedAt: scannedDate,
+          source: 'OfflineSync',
+        });
         return { outcome: 'WrongCafeteria', message: 'این رزرو مربوط به سلف دیگری است.' };
       }
-      if (!row.qrToken || sha256Hex(row.qrToken) !== event.qrTokenHash) {
+
+      const validQrHash = row.qrToken ? sha256Hex(row.qrToken.toLowerCase()) : '';
+      const normCode = normalizeDeliveryToken(row.code);
+      const validCodeHash = normCode ? sha256Hex(normCode.canonical) : '';
+      if (event.qrTokenHash !== validQrHash && event.qrTokenHash !== validCodeHash) {
+        await logAttempt(tx, {
+          reservationId: row.id,
+          operator: op,
+          cafeteriaId: row.cafeteriaId,
+          outcome: 'Invalid',
+          message: 'عدم تطابق هش توکن/کد در همگام‌سازی آفلاین (احتمالاً بازصدور QR)',
+          clientEventId: event.clientEventId,
+          deviceId: event.deviceId,
+          scannedAt: scannedDate,
+          source: 'OfflineSync',
+        });
         return { outcome: 'Invalid', message: 'کد QR با فهرست آفلاین مطابقت ندارد (احتمالاً بازصدور شده است).' };
       }
+
       if (row.status === 'Cancelled') {
         await logAttempt(tx, {
           reservationId: row.id,
@@ -731,7 +799,7 @@ export async function syncOfflineScans(
           message: 'رزرو در فاصلهٔ آفلاین لغو شده است',
           clientEventId: event.clientEventId,
           deviceId: event.deviceId,
-          scannedAt: new Date(event.scannedAt),
+          scannedAt: scannedDate,
           source: 'OfflineSync',
         });
         return { outcome: 'OfflineConflict', message: 'این رزرو در فاصلهٔ قطعی اینترنت لغو شده است؛ برای بررسی به مسئول سلف مراجعه کنید.' };
@@ -742,21 +810,32 @@ export async function syncOfflineScans(
           operator: op,
           cafeteriaId: row.cafeteriaId,
           outcome: 'OfflineConflict',
-          message: 'پیش‌تر توسط سلف دیگری تحویل شده است',
+          message: 'پیش‌تر توسط دستگاه یا سلف دیگری تحویل شده است',
           clientEventId: event.clientEventId,
           deviceId: event.deviceId,
-          scannedAt: new Date(event.scannedAt),
+          scannedAt: scannedDate,
           source: 'OfflineSync',
         });
-        return { outcome: 'OfflineConflict', message: 'این وعده پیش‌تر (احتمالاً توسط سلف دیگر) تحویل ثبت شده است.' };
+        return { outcome: 'OfflineConflict', message: 'این وعده پیش‌تر توسط دستگاه یا اپراتور دیگری تحویل ثبت شده است.' };
       }
       if (row.status !== 'Reserved') {
-        return { outcome: 'Invalid', message: `رزرو در وضعیت «${row.status}» قابل تحویل نیست.` };
+        await logAttempt(tx, {
+          reservationId: row.id,
+          operator: op,
+          cafeteriaId: row.cafeteriaId,
+          outcome: 'OfflineConflict',
+          message: `تغییر وضعیت رزرو به ${row.status} پیش از همگام‌سازی آفلاین`,
+          clientEventId: event.clientEventId,
+          deviceId: event.deviceId,
+          scannedAt: scannedDate,
+          source: 'OfflineSync',
+        });
+        return { outcome: 'OfflineConflict', message: `رزرو در وضعیت «${row.status}» قرار گرفته و نیازمند بررسی تعارض آفلاین است.` };
       }
 
       const updated = await tx
         .update(reservations)
-        .set({ status: 'Delivered', deliveredAt: new Date(event.scannedAt), deliveredBy: op.staffId })
+        .set({ status: 'Delivered', deliveredAt: scannedDate, deliveredBy: op.staffId })
         .where(sql`${reservations.id} = ${row.id} AND ${reservations.status} = 'Reserved'`)
         .returning({ id: reservations.id });
 
@@ -781,7 +860,7 @@ export async function syncOfflineScans(
         message: 'تحویل از صف آفلاین',
         clientEventId: event.clientEventId,
         deviceId: event.deviceId,
-        scannedAt: new Date(event.scannedAt),
+        scannedAt: scannedDate,
         source: 'OfflineSync',
       });
       await writeAudit(tx, {
@@ -805,14 +884,25 @@ export async function syncOfflineScans(
   return { accepted, duplicate, conflict, invalid, results };
 }
 
-/** گزارش مغایرت‌های آفلاین (برای مدیر ارشد). */
+/** گزارش مغایرت‌های آفلاین (برای صفحات مدیریتی رزروها، گزارش‌ها و داشبورد). */
 export async function listOfflineConflicts(deps: ServiceDeps, limit = 200) {
   const rows = await deps.db.execute(
     rawSql(
       `SELECT d.id, d.received_at AS "receivedAt", d.scanned_at AS "scannedAt", d.message, d.outcome,
-              r.code AS "reservationCode", c.name AS "cafeteriaName", u.full_name AS "operatorName"
+              d.device_id AS "deviceId", r.id AS "reservationId", r.code AS "reservationCode",
+              r.status AS "reservationStatus", r.service_date AS "serviceDate",
+              ms.code AS "mealSlot", f.name AS "foodName",
+              COALESCE(s.full_name, e.full_name) AS "holderName",
+              COALESCE(s.student_number, e.username) AS "holderIdentifier",
+              c.name AS "cafeteriaName", u.full_name AS "operatorName"
        FROM deliveries d
        LEFT JOIN reservations r ON r.id = d.reservation_id
+       LEFT JOIN meal_slots ms ON ms.id = r.meal_slot_id
+       LEFT JOIN meal_offerings o ON o.id = r.offering_id
+       LEFT JOIN foods f ON f.id = o.food_id
+       LEFT JOIN accounts a ON a.id = r.account_id
+       LEFT JOIN students s ON s.id = a.student_id
+       LEFT JOIN employees e ON e.id = a.employee_id
        LEFT JOIN cafeterias c ON c.id = d.cafeteria_id
        LEFT JOIN staff_users u ON u.id = d.operator_id
        WHERE d.outcome = 'OfflineConflict'
@@ -827,7 +917,15 @@ export async function listOfflineConflicts(deps: ServiceDeps, limit = 200) {
     scannedAt: new Date(String(row.scannedAt)).toISOString(),
     message: String(row.message ?? ''),
     outcome: String(row.outcome ?? ''),
-    reservationCode: String(row.reservationCode ?? ''),
+    deviceId: String(row.deviceId ?? ''),
+    reservationId: row.reservationId == null ? null : String(row.reservationId),
+    reservationCode: showCode(String(row.reservationCode ?? '')),
+    reservationStatus: String(row.reservationStatus ?? ''),
+    serviceDate: row.serviceDate == null ? '' : String(row.serviceDate).slice(0, 10),
+    mealSlot: String(row.mealSlot ?? ''),
+    foodName: String(row.foodName ?? ''),
+    holderName: String(row.holderName ?? ''),
+    holderIdentifier: String(row.holderIdentifier ?? ''),
     cafeteriaName: String(row.cafeteriaName ?? ''),
     operatorName: String(row.operatorName ?? ''),
   }));

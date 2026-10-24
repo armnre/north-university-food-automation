@@ -81,6 +81,7 @@ describe('اسکیمای پایگاه داده', () => {
       'offering_prices',
       'reservations',
       'reservation_history',
+      'reservation_reminders',
       'deliveries',
       'ledger_transactions',
       'ledger_entries',

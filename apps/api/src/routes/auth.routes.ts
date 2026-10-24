@@ -28,7 +28,7 @@ import {
 } from '../services/auth.service.js';
 import { issueCaptcha } from '../services/captcha.service.js';
 import { employeeMobile } from '../services/notification.service.js';
-import { listSessions, revokeSessionById } from '../services/session.service.js';
+import { findPreviousLoginSession, listSessions, revokeSessionById } from '../services/session.service.js';
 import { readSessionToken } from '../plugins/auth.js';
 import type { AuthContext, ServiceDeps } from '../types.js';
 
@@ -255,6 +255,7 @@ export function clearSessionCookie(reply: FastifyReply, deps: ServiceDeps): void
 /** ساخت پاسخ `/auth/me` برای هر سه نوع کاربر (بدون افشای دادهٔ حساس). */
 export async function buildMeResponse(deps: ServiceDeps, auth: AuthContext): Promise<z.infer<typeof meResponseSchema>> {
   if (auth.kind === 'student') {
+    const previousLogin = await findPreviousLoginSession(deps, 'Student', auth.studentId, auth.sessionId);
     return {
       kind: 'student' as const,
       student: {
@@ -269,6 +270,8 @@ export async function buildMeResponse(deps: ServiceDeps, auth: AuthContext): Pro
         status: auth.status,
         balanceRial: auth.balanceRial,
         customerGroup: 'Student' as const,
+        lastLoginAt: auth.lastLoginAt ? auth.lastLoginAt.toISOString() : null,
+        previousLogin,
       },
     };
   }

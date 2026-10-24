@@ -45,6 +45,8 @@ describe('دارایی‌های PWA، Service Worker و بودجهٔ حجم فر
     const swContent = await readFile(resolve(webDistDir, 'sw.js'), 'utf8');
     expect(swContent).toContain('\\/api');
     expect(swContent).toContain('\\/uploads');
+    // چانک صفحهٔ تحویل سلف در لیست precache سرویس‌ورکر وجود دارد تا در حالت آفلاین بارگذاری شود
+    expect(swContent).toContain('DeliveryPage-');
 
     const assetFiles = await readdir(resolve(webDistDir, 'assets'));
     const entryChunk = assetFiles.find((f) => /^index-.*\.js$/.test(f));

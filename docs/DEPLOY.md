@@ -11,7 +11,7 @@
 - **حافظه و دیسک:** حدود `9.7 GiB` رم (`~8.1 GiB` آزاد) + `4 GiB` swap و حدود `81 GB` فضای خالی XFS؛ منطقهٔ زمانی `Asia/Tehran`
 - **وب‌سرور و پنل:** Plesk با `nginx` در جلوی Apache
 - **سرویس‌های همسایه (خط قرمز عملیاتی):**
-  - سرویس `shomaldoc` روی پورت `3080` و سایت استاتیک `nezarat.shomal.ac.ir` روی همین سرور فعال هستند. **هرگز** سرویس‌ها، دیتابیس‌ها، Node اختصاصی یا تنظیمات nginx آن‌ها را ویرایش یا ری‌استارت نکنید.
+  - سرویس `shomaldoc` روی پورت `3080` و سایت‌های استاتیک دیگر (مانند `portal.example.edu`) روی همین سرور فعال هستند. **هرگز** سرویس‌ها، دیتابیس‌ها، Node اختصاصی یا تنظیمات nginx آن‌ها را ویرایش یا ری‌استارت نکنید.
   - **هرگز** از افزونهٔ _Plesk Node.js Toolkit_ استفاده نکنید و Node سیستمی (`v18.19.1`) را تغییر ندهید.
   - **PostgreSQL `16.15`** به صورت مشترک روی `127.0.0.1:5432` و `::1:5432` در حال اجراست؛ هرگز دیتابیس‌ها یا نقش‌های موجود را تغییر ندهید و سرویس `postgresql` را ری‌استارت نکنید.
 
@@ -19,17 +19,17 @@
 
 ## ۲. معماری چیدمان فایل‌ها و پورت‌ها در سرور
 
-| مؤلفه                                | مسیر / مقدار                                                                        | مالک و مجوز                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------- |
-| کاربر سیستمی اجرا                    | `food:food` (`/usr/sbin/nologin`)                                                   | بدون دسترسی شل                            |
-| باینری ایزولهٔ Node 22 LTS           | `/opt/food/node/current/bin/node`                                                   | `root:root` (`0755`)                      |
-| نسخه‌های انتشار و لینک فعال          | `/opt/food/releases/<timestamp>` ← `/opt/food/current`                              | `root:root` (`0755`)                      |
-| تصاویر آپلودشدهٔ غذا                 | `/opt/food/shared/uploads`                                                          | `food:food` (`0750`)                      |
-| فایل متغیرهای محیطی و اسرار          | `/etc/food/app.env`                                                                 | `root:food` (`0640`)                      |
-| پشتیبان‌های روزانه (۱۴ روز نگه‌داری) | `/var/backups/food`                                                                 | `root:root` (`0700` پوشه، `0600` فایل‌ها) |
-| پورت داخلی سرویس API                 | `127.0.0.1:3101` (`TRUSTED_PROXY_HOPS=1`)                                           | فقط قابل دسترس از loopback محلی           |
-| دیتابیس و نقش‌های PostgreSQL         | دیتابیس `food_automation`، نقش مهاجرت `food_migrator`، نقش اجرایی `food_app`        | جداسازی کامل DDL و DML                    |
-| واحدهای systemd                      | `food-api.service`، `food-worker.service`، `food-backup.timer`، `food-health.timer` | سخت‌سازی‌شده (`ProtectSystem=strict`)     |
+| مؤلفه                                | مسیر / مقدار                                                                                                    | مالک و مجوز                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| کاربر سیستمی اجرا                    | `food:food` (`/usr/sbin/nologin`)                                                                               | بدون دسترسی شل                            |
+| باینری ایزولهٔ Node 22 LTS           | `/opt/food/node/current/bin/node`                                                                               | `root:root` (`0755`)                      |
+| نسخه‌های انتشار و لینک فعال          | `/opt/food/releases/<timestamp>` ← `/opt/food/current`                                                          | `root:root` (`0755`)                      |
+| تصاویر آپلودشدهٔ غذا                 | `/opt/food/shared/uploads`                                                                                      | `food:food` (`0750`)                      |
+| فایل متغیرهای محیطی و اسرار          | `/etc/food/app.env`                                                                                             | `root:food` (`0640`)                      |
+| پشتیبان‌های روزانه (۱۴ روز نگه‌داری) | `/var/backups/food`                                                                                             | `root:root` (`0700` پوشه، `0600` فایل‌ها) |
+| پورت داخلی سرویس API                 | `127.0.0.1:3101` (`TRUSTED_PROXY_HOPS=1`)                                                                       | فقط قابل دسترس از loopback محلی           |
+| دیتابیس و نقش‌های PostgreSQL         | دیتابیس `food_automation`، نقش مهاجرت `food_migrator`، نقش اجرایی `food_app`                                    | جداسازی کامل DDL و DML                    |
+| واحدهای systemd                      | `food-api.service`، `food-worker.service`، `food-backup.timer`، `food-restore-drill.timer`، `food-health.timer` | سخت‌سازی‌شده (`ProtectSystem=strict`)     |
 
 ---
 
@@ -37,19 +37,19 @@
 
 کد سامانه هیچ دامنه‌ای را هاردکد نکرده و صرفاً از متغیر `PUBLIC_BASE_URL` در `/etc/food/app.env` پیروی می‌کند. دو گزینه روی این سرور وجود دارد:
 
-### گزینهٔ الف (توصیه‌شده برای راه‌اندازی فوری): `dining.shomal.ac.ir`
+### گزینهٔ الف (توصیه‌شده برای راه‌اندازی فوری): زیردامنهٔ دانشگاهی (`dining.example.edu` / `<YOUR_SUBDOMAIN>`)
 
-1. گواهی وایلدکارد معتبر دانشگاه (`wildcard-shomal-2026` روی `*.shomal.ac.ir`) از قبل روی سرور موجود است.
-2. یک رکورد `A` برای `dining.shomal.ac.ir` به آدرس IP سرور (`185.129.168.87`) ثبت کنید.
-3. در پنل Plesk زیردامنهٔ `dining.shomal.ac.ir` را ایجاد کرده، گواهی `wildcard-shomal-2026` و گزینهٔ _Permanent SEO-safe 301 redirect from HTTP to HTTPS_ را فعال کنید.
-4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://dining.shomal.ac.ir` را قرار دهید.
+1. در صورت وجود گواهی وایلدکارد معتبر دانشگاه (`*.example.edu`) روی سرور، می‌توانید مستقیماً از آن استفاده کنید.
+2. یک رکورد `A` برای دامنهٔ سامانه (`<YOUR_SUBDOMAIN>`) به آدرس IP سرور (`<SERVER_IP>`) ثبت کنید.
+3. در پنل Plesk زیردامنهٔ موردنظر را ایجاد کرده، گواهی TLS و گزینهٔ _Permanent SEO-safe 301 redirect from HTTP to HTTPS_ را فعال کنید.
+4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://dining.example.edu` (دامنهٔ واقعی خود) را قرار دهید.
 
-### گزینهٔ ب (دامنهٔ مستقل): `diningshomal.ir`
+### گزینهٔ ب (دامنهٔ مستقل): دامنهٔ مجزا (`food.example.org` / `<YOUR_DOMAIN>`)
 
-1. دامنهٔ `diningshomal.ir` (شناسهٔ دامنهٔ ۲ در Plesk روی IP `185.129.168.87`) در حال حاضر فاقد رکوردهای فعال DNS (`NS` / `A`) در ایرنیک است.
-2. ابتدا در پنل ایرنیک، نیم‌سرورها یا رکورد `A` دامنهٔ `diningshomal.ir` را به `185.129.168.87` متصل کنید و از انتشار سراسری DNS با `dig +short A diningshomal.ir` مطمئن شوید.
-3. سپس در Plesk گواهی رایگان Let's Encrypt (یا گواهی تجاری واردشده) را برای `diningshomal.ir` صادر و فعال کنید.
-4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://diningshomal.ir` را قرار دهید.
+1. اگر دامنهٔ مستقل روی IP سرور (`<SERVER_IP>`) تعریف شده است، ابتدا از فعال بودن رکوردهای DNS (`NS` / `A`) مطمئن شوید.
+2. نیم‌سرورها یا رکورد `A` دامنه را به `<SERVER_IP>` متصل کنید و از انتشار سراسری DNS با `dig +short A <YOUR_DOMAIN>` مطمئن شوید.
+3. سپس در Plesk گواهی رایگان Let's Encrypt (یا گواهی تجاری واردشده) را برای دامنه صادر و فعال کنید.
+4. در `/etc/food/app.env` مقدار `PUBLIC_BASE_URL=https://food.example.org` (دامنهٔ واقعی خود) را قرار دهید.
 
 > **نکتهٔ مهم درگاه زرین‌پال:** دامنهٔ ثبت‌شده در پنل پذیرندگان زرین‌پال برای دریافت `ZARINPAL_MERCHANT_ID` **باید دقیقاً** با دامنهٔ `PUBLIC_BASE_URL` یکسان باشد؛ در غیر این صورت زرین‌پال درخواست ایجاد تراکنش با آدرس بازگشت (`callback_url`) دامنهٔ متفاوت را رد خواهد کرد.
 
@@ -84,10 +84,10 @@ sudo bash /tmp/deploy/preflight.sh
 
 ```bash
 # اگر آرشیو Node 22 را به سرور منتقل کرده‌اید:
-sudo NODE_TARBALL=/tmp/node-v22.22.3-linux-x64.tar.xz PUBLIC_BASE_URL=https://dining.shomal.ac.ir bash /tmp/deploy/provision.sh
+sudo NODE_TARBALL=/tmp/node-v22.22.3-linux-x64.tar.xz PUBLIC_BASE_URL=https://dining.example.edu bash /tmp/deploy/provision.sh
 
 # یا اگر سرور به nodejs.org دسترسی مستقیم دارد:
-sudo PUBLIC_BASE_URL=https://dining.shomal.ac.ir bash /tmp/deploy/provision.sh
+sudo PUBLIC_BASE_URL=https://dining.example.edu bash /tmp/deploy/provision.sh
 ```
 
 سپس فایل `/etc/food/app.env` را بازبینی کنید:
@@ -118,11 +118,11 @@ sudo bash /tmp/deploy/deploy.sh --tarball /tmp/food-release-<sha>.tar.gz
 
 > **هشدار:** هرگز فایل‌های تولیدشدهٔ خودکار Plesk (مانند `nginx.conf` در ریشهٔ دامنه) را دستی ویرایش نکنید.
 
-1. در پنل Plesk برای دامنهٔ موردنظر (`dining.shomal.ac.ir` یا `diningshomal.ir`) به **Hosting & DNS → Apache & nginx Settings** بروید و تیک **Proxy mode** را بردارید تا درخواست‌ها به Apache ارسال نشوند.
+1. در پنل Plesk برای دامنهٔ موردنظر (`dining.example.edu` یا دامنهٔ واقعی دانشگاه) به **Hosting & DNS → Apache & nginx Settings** بروید و تیک **Proxy mode** را بردارید تا درخواست‌ها به Apache ارسال نشوند.
 2. فایل نمونهٔ پروکسی را در مسیر استاندارد Plesk کپی و بازآرایی کنید:
 
 ```bash
-DOMAIN="dining.shomal.ac.ir"
+DOMAIN="dining.example.edu" # دامنهٔ واقعی سامانه را جایگزین کنید
 
 sudo nginx -t
 sudo cp /opt/food/current/deploy/nginx-vhost_nginx.conf.example "/var/www/vhosts/system/${DOMAIN}/conf/vhost_nginx.conf"
@@ -153,6 +153,17 @@ sudo bash -c 'set -a && . /etc/food/app.env && set +a && cd /opt/food/current &&
 4. وضعیت سرویس‌ها و تایمر پشتیبان‌گیری را بررسی کنید:
 
 ```bash
-systemctl status food-api.service food-worker.service food-backup.timer food-health.timer
+systemctl status food-api.service food-worker.service food-backup.timer food-restore-drill.timer food-health.timer
 journalctl -u food-api.service -u food-worker.service -n 50 --no-pager
 ```
+
+---
+
+## ۶. پشتیبان‌گیری رمزنگاری‌شدهٔ `age`، انتقال خارج از سرور و تمرین بازیابی
+
+> **هشدار حیاتی: بدون نسخه‌ی خارج از سرور، بکاپ ناقص است!**
+> نگهداری بکاپ صرفاً روی دیسک همان سرور در برابر خرابی سخت‌افزار یا باج‌افزار محافظتی ایجاد نمی‌کند. حتماً انتقال خارج از سرور (`BACKUP_RSYNC_TARGET` / `BACKUP_SCP_TARGET` یا کشیدن شبانه از سرور بکاپ مستقل) را فعال کنید.
+
+1. روی ایستگاه امن خارج از سرور جفت‌کلید `age` بسازید (`age-keygen -o food-backup-master.key`)، کلید خصوصی را در گاوصندوق خارج از سرور نگه دارید و **فقط کلید عمومی (`age1...`)** را در `BACKUP_AGE_RECIPIENT` داخل `/etc/food/app.env` قرار دهید.
+2. تایمر `food-backup.timer` هر شب ساعت `03:30` اسکریپت `/opt/food/backup.sh` را اجرا می‌کند: دامپ PostgreSQL با `pg_restore --list` راستی‌آزمایی شده، با کلید عمومی `age` رمزنگاری می‌شود (`.dump.age`)، چک‌سام `.sha256` تولید و بررسی می‌گردد، نسخه‌های قدیمی‌تر از ۱۴ روز پاک می‌شوند و در صورت تنظیم مقصد، به خارج از سرور ارسال می‌گردند.
+3. تایمر ماهانهٔ `food-restore-drill.timer` اسکریپت `/opt/food/restore-drill.sh` را اجرا می‌کند تا بازیابی واقعی روی دیتابیس موقت `food_restore_test`، شمارش جدول‌ها، تراز صفر دفتر کل، برابری موجودی حساب‌ها و سلامت FKها به صورت خودکار آزمایش شود. جزئیات کامل در `deploy/restore.md` مستند شده است.

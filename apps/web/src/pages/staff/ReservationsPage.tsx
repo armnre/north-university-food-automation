@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@project/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@project/components/ui/table';
 import { EmptyState, ErrorNote, ErrorState, LoadingBlock, PageHeader, Pill } from '../../components/ui-kit';
+import OfflineConflictsPanel from '../../components/OfflineConflictsPanel';
 import { MEALS, RES_STATUS, addDays, downloadCsv, errMsg, faDate, faDateTime, faDigits, rial, showCode, tehranToday } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
@@ -93,6 +94,7 @@ export default function ReservationsPage() {
           </Button>
         }
       />
+      <OfflineConflictsPanel />
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <Input type="date" dir="ltr" value={from} onChange={(e) => { setFrom(e.target.value); setPage(0); }} aria-label="از تاریخ" />
         <Input type="date" dir="ltr" value={to} onChange={(e) => { setTo(e.target.value); setPage(0); }} aria-label="تا تاریخ" />

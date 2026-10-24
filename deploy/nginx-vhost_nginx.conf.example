@@ -2,7 +2,7 @@
 # نمونهٔ پیکربندی Plesk nginx برای سامانه اتوماسیون تغذیه دانشگاه شمال
 # مسیر قرارگیری روی سرور Plesk (هرگز فایل‌های تولیدی خود Plesk را ویرایش نکنید):
 #   /var/www/vhosts/system/<domain>/conf/vhost_nginx.conf
-#   (مثلاً برای dining.shomal.ac.ir یا diningshomal.ir)
+#   (مثلاً برای دامنهٔ نمونه dining.example.edu یا food.example.org)
 #
 # پیش‌نیاز در پنل Plesk برای دامنهٔ موردنظر:
 #   Hosting & DNS -> Apache & nginx Settings -> Proxy mode = OFF (غیرفعال کردن ارسال به Apache)

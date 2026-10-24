@@ -7,6 +7,12 @@ declare module 'autocannon' {
     duration?: number;
     headers?: Record<string, string>;
     body?: string;
+    requests?: Array<{
+      method?: string;
+      path?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    }>;
   }
 
   export interface Histogram {

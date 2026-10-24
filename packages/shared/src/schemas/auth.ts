@@ -67,6 +67,14 @@ export const studentMeSchema = z.object({
   status: z.enum(STUDENT_STATUSES),
   balanceRial: z.number().int(),
   customerGroup: z.literal('Student'),
+  lastLoginAt: z.string().nullable(),
+  previousLogin: z
+    .object({
+      at: z.string(),
+      ip: z.string().nullable(),
+      userAgent: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 export const employeeMeSchema = z.object({

@@ -11,6 +11,7 @@ export * from './national-id.js';
 export * from './normalize.js';
 export * from './password.js';
 export * from './permissions.js';
+export * from './rbac-doc.js';
 export * from './settings.js';
 export * from './tehran.js';
 export * from './schemas/index.js';

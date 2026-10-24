@@ -46,3 +46,6 @@ tmp/
 .uploads/
 apps/api/.uploads/
 
+
+# Generated screenshots are committed only under docs/screenshots
+apps/web/screenshots-tmp/

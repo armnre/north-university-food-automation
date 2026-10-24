@@ -547,7 +547,7 @@ export const deliveryStatsResponseSchema = z.object({
   totals: z.object({ reserved: z.number().int(), delivered: z.number().int(), remaining: z.number().int(), rejected: z.number().int() }),
 });
 
-/** فهرست آفلاین: فقط hash توکن‌ها (خود توکن هرگز در IndexedDB ذخیره نمی‌شود). */
+/** فهرست آفلاین: فقط hash توکن‌ها (هیچ توکن QR یا کد تحویل خامی هرگز ارسال یا ذخیره نمی‌شود). */
 export const offlineManifestResponseSchema = z.object({
   today: z.string(),
   cafeteriaId: z.string(),
@@ -555,8 +555,8 @@ export const offlineManifestResponseSchema = z.object({
   reservations: z.array(
     z.object({
       reservationId: uuidSchema,
-      code: z.string(),
-      qrTokenHash: z.string(),
+      qrTokenHash: z.string().regex(/^[a-f0-9]{64}$/),
+      codeHash: z.string().regex(/^[a-f0-9]{64}$/),
       holderName: z.string(),
       holderIdentifier: z.string(),
       foodName: z.string(),
@@ -567,15 +567,18 @@ export const offlineManifestResponseSchema = z.object({
   ),
 });
 
+export const offlineSyncLocalOutcomeSchema = z.enum(['ProvisionalAccepted', 'DuplicateLocal', 'InvalidOffline']);
+
 export const offlineSyncRequestSchema = z.object({
   events: z
     .array(
       z.object({
         clientEventId: z.string().trim().min(8).max(64),
-        reservationId: uuidSchema,
+        reservationId: uuidSchema.nullable().optional(),
         qrTokenHash: z.string().regex(/^[a-f0-9]{64}$/, 'hash نامعتبر است.'),
         scannedAt: z.iso.datetime({ offset: true }),
         deviceId: z.string().trim().max(120).default(''),
+        localOutcome: offlineSyncLocalOutcomeSchema.optional(),
       }),
     )
     .min(1)
@@ -802,7 +805,7 @@ export const importPreviewResponseSchema = z.object({
 
 export const importCommitRequestSchema = z.object({
   /** شمارهٔ ردیف‌هایی که معاونت تعارض کد ملی‌شان را صریحاً تأیید کرده است. */
-  approvedConflicts: z.array(z.number().int().min(1).max(100_000)).max(10_000).optional(),
+  approvedConflicts: z.array(z.number().int().min(1).max(100_000)).max(25_000).optional(),
 });
 
 export const importCommitResponseSchema = z.object({

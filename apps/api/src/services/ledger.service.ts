@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { LedgerTxType, SystemAccount } from '@food/shared';
 import { accounts, ledgerEntries, ledgerTransactions } from '../db/schema/index.js';
+import { rawSql } from '../db/raw.js';
 import { newTrackingCode } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import type { Actor, ServiceDeps, Tx } from '../types.js';
@@ -30,6 +31,8 @@ export type LedgerPostInput = {
   referenceType?: string;
   referenceId?: string | null;
   legs: LedgerLeg[];
+  /** اگر فراخواننده همین تراکنش قبلاً ردیف‌های `accounts` را با `FOR UPDATE` قفل کرده باشد، از قفل تکراری پرهیز می‌شود. */
+  prelockedAccounts?: Map<string, AccountLock>;
   /** رویداد ممیزی همراه (اختیاری) — داخل همان تراکنش ثبت می‌شود. */
   audit?: { action: string; targetType: string; targetId?: string | null; details?: Record<string, unknown> };
 };
@@ -97,11 +100,75 @@ export async function postLedger(target: Tx, deps: ServiceDeps, input: LedgerPos
   const accountIds = [
     ...new Set(legs.filter((l) => 'accountId' in l && l.accountId).map((l) => String((l as { accountId: string }).accountId))),
   ];
-  const locked = await lockAccountsForUpdate(target, accountIds);
+  const needsLock = accountIds.some((id) => !input.prelockedAccounts?.has(id));
+  const locked = needsLock ? await lockAccountsForUpdate(target, accountIds) : input.prelockedAccounts!;
 
   for (const id of accountIds) {
     if (!locked.has(id)) throw new AppError('NOT_FOUND', 'حساب کیف پول یافت نشد.');
     if (!locked.get(id)!.isActive) throw new AppError('ACCOUNT_INACTIVE', 'حساب کیف پول غیرفعال است.');
+  }
+
+  // مسیر سریع تک‌دور (CTE) برای حالت استاندارد دوطرفه (یک حساب کاربر + یک حساب سیستمی، بدون audit جانبی)
+  const accLeg =
+    legs.length === 2
+      ? legs.find((l): l is { accountId: string; amountRial: number } => 'accountId' in l && Boolean(l.accountId))
+      : undefined;
+  const sysLeg =
+    legs.length === 2
+      ? legs.find((l): l is { systemAccount: SystemAccount; amountRial: number } => 'systemAccount' in l && Boolean(l.systemAccount))
+      : undefined;
+  if (accLeg && sysLeg && !input.audit) {
+    const tracking = newTrackingCode();
+    const accAmount = Number(accLeg.amountRial);
+    const sysAmount = Number(sysLeg.amountRial);
+    const cteRes = await target.execute(
+      rawSql(
+        `WITH upd_acc AS (
+           UPDATE accounts
+           SET balance_rial = balance_rial + $1::bigint
+           WHERE id = $2::uuid AND is_active = true AND balance_rial + $1::bigint >= 0
+           RETURNING id, balance_rial
+         ),
+         ins_tx AS (
+           INSERT INTO ledger_transactions (type, idempotency_key, reference_type, reference_id, reason, actor_type, actor_id, tracking_code)
+           SELECT $3, $4, $5, $6::uuid, $7, $8, $9::uuid, $10
+           FROM upd_acc
+           RETURNING id, tracking_code
+         ),
+         ins_entries AS (
+           INSERT INTO ledger_entries (transaction_id, account_id, system_account, amount_rial, balance_after)
+           SELECT ins_tx.id, upd_acc.id, NULL, $1::bigint, upd_acc.balance_rial FROM ins_tx CROSS JOIN upd_acc
+           UNION ALL
+           SELECT ins_tx.id, NULL, $11, $12::bigint, NULL FROM ins_tx CROSS JOIN upd_acc
+         )
+         SELECT ins_tx.id AS "txId", ins_tx.tracking_code AS "trackingCode", upd_acc.balance_rial::text AS "newBalance"
+         FROM ins_tx CROSS JOIN upd_acc`,
+        [
+          accAmount,
+          accLeg.accountId,
+          input.type,
+          input.idempotencyKey,
+          input.referenceType ?? null,
+          input.referenceId || null,
+          input.reason.trim().slice(0, 1000),
+          input.actor.type,
+          input.actor.id || null,
+          tracking,
+          sysLeg.systemAccount,
+          sysAmount,
+        ],
+      ),
+    );
+    const cteRow = ((cteRes as unknown as { rows: { txId: string; trackingCode: string; newBalance: string }[] }).rows ?? [])[0];
+    if (!cteRow) {
+      throw new AppError('INSUFFICIENT_BALANCE', 'موجودی کیف پول برای این عملیات کافی نیست.');
+    }
+    return {
+      transactionId: cteRow.txId,
+      trackingCode: cteRow.trackingCode,
+      replay: false,
+      balances: { [accLeg.accountId]: Number(cteRow.newBalance) },
+    };
   }
 
   const [transaction] = await target

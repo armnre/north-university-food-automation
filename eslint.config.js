@@ -17,6 +17,7 @@ export default tseslint.config(
       '**/coverage/**',
       'apps/api/drizzle/meta/**',
       'apps/web/public/sw.js',
+      'docs/screenshots/**',
       '.husky/_/**',
     ],
   },

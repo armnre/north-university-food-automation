@@ -10,8 +10,9 @@ import {
   type StaffStatus,
   type StudentStatus,
 } from '@food/shared';
-import { accounts, employees, staffUsers, students } from '../db/schema/index.js';
-import { hashPassword, hmacSha256Hex, passwordNeedsRehash, safeEqual, verifyPassword } from '../lib/crypto.js';
+import { employees, staffUsers, students } from '../db/schema/index.js';
+import { hashPassword, hmacSha256Hex, passwordNeedsRehash, safeEqual, sha256Hex, verifyPassword } from '../lib/crypto.js';
+import { rawSql } from '../db/raw.js';
 import { isLikelyNewDevice } from '../lib/request-context.js';
 import { AppError, fail } from '../lib/errors.js';
 import type { AuthContext, ServiceDeps } from '../types.js';
@@ -25,6 +26,7 @@ import {
   revokeAllSessionsForSubject,
   revokeOtherSessions,
   revokeSessionByToken,
+  touchSession,
 } from './session.service.js';
 import { createNotification } from './notification.service.js';
 
@@ -139,7 +141,7 @@ export async function loginStudent(
   if (newDevice && previousUserAgents.length > 0) {
     await createNotification(deps.db, {
       title: 'ورود از دستگاه جدید',
-      body: `ورود به حساب شما از یک دستگاه/مرورگر جدید انجام شد. اگر شما نبودید، فوراً به معاونت دانشجویی اطلاع دهید.`,
+      body: `ورود به حساب شما از یک دستگاه یا مرورگر جدید (IP: ${input.ip || 'نامشخص'}) ثبت شد. اگر این ورود توسط شما انجام نشده است، از بخش پروفایل سایر نشست‌ها را باطل کرده و فوراً به معاونت دانشجویی اطلاع دهید.`,
       audience: 'Account',
       accountId,
       event: 'security.new_login',
@@ -299,83 +301,120 @@ export async function loginEmployee(
   };
 }
 
-/** ساخت `AuthContext` از توکن نشست؛ اگر نامعتبر باشد `null`. */
-export async function resolveAuthContext(deps: ServiceDeps, token: string): Promise<AuthContext | null> {
-  const session = await findValidSession(deps, token);
-  if (!session) return null;
+/** ساخت `AuthContext` از توکن نشست در یک پرس‌وجوی ایندکس‌شدهٔ واحد؛ اگر نامعتبر باشد `null`. */
+export async function resolveAuthContext(deps: ServiceDeps, token: string, options?: { touch?: boolean }): Promise<AuthContext | null> {
+  if (!token || token.length < 32) return null;
+  const tokenHash = sha256Hex(token);
+  const res = await deps.db.execute(
+    rawSql(
+      `SELECT sess.id AS "sessionId", sess.subject_type AS "subjectType", sess.subject_id AS "subjectId",
+              sess.expires_at AS "expiresAt", sess.absolute_expires_at AS "absoluteExpiresAt", sess.last_seen_at AS "lastSeenAt",
+              st.id AS "studentId", st.student_number AS "studentNumber", st.full_name AS "studentName",
+              st.faculty, st.major, st.degree, st.entry_year AS "entryYear",
+              st.national_id_last4 AS "nationalIdLast4", st.status AS "studentStatus", st.last_login_at AS "studentLastLoginAt",
+              em.id AS "employeeId", em.username AS "employeeUsername", em.full_name AS "employeeName",
+              em.department, em.customer_group AS "employeeGroup", em.status AS "employeeStatus",
+              em.must_change_password AS "employeeMustChange",
+              su.id AS "staffId", su.username AS "staffUsername", su.full_name AS "staffName",
+              su.role AS "staffRole", su.status AS "staffStatus", su.contractor_id AS "contractorId",
+              su.cafeteria_id AS "cafeteriaId", su.must_change_password AS "staffMustChange",
+              ac.id AS "accountId", ac.balance_rial::text AS "balanceRial", ac.is_active AS "accountIsActive"
+       FROM sessions sess
+       LEFT JOIN students st ON sess.subject_type = 'Student' AND st.id = sess.subject_id
+       LEFT JOIN employees em ON sess.subject_type = 'Employee' AND em.id = sess.subject_id
+       LEFT JOIN staff_users su ON sess.subject_type = 'Staff' AND su.id = sess.subject_id
+       LEFT JOIN accounts ac ON (sess.subject_type = 'Student' AND ac.student_id = st.id)
+                             OR (sess.subject_type = 'Employee' AND ac.employee_id = em.id)
+       WHERE sess.token_hash = $1
+         AND sess.revoked_at IS NULL
+         AND sess.expires_at > now()
+         AND sess.absolute_expires_at > now()
+       LIMIT 1`,
+      [tokenHash],
+    ),
+  );
+  const row = ((res as unknown as { rows: Record<string, unknown>[] }).rows ?? [])[0];
+  if (!row) return null;
 
-  if (session.subjectType === 'Student') {
-    const rows = await deps.db
-      .select({ student: students, account: accounts })
-      .from(students)
-      .leftJoin(accounts, eq(accounts.studentId, students.id))
-      .where(eq(students.id, session.subjectId))
-      .limit(1);
-    const row = rows[0];
-    if (!row?.student || row.student.status !== 'Active') return null;
-    if (!row.account || !row.account.isActive) return null;
-    return {
+  const subjectType = String(row.subjectType);
+  let ctx: AuthContext;
+
+  if (subjectType === 'Student') {
+    if (!row.studentId || String(row.studentStatus) !== 'Active') return null;
+    if (!row.accountId || !row.accountIsActive) return null;
+    ctx = {
       kind: 'student',
       subjectType: 'Student',
-      sessionId: session.id,
-      studentId: row.student.id,
-      accountId: row.account.id,
-      studentNumber: row.student.studentNumber,
-      fullName: row.student.fullName,
-      faculty: row.student.faculty,
-      major: row.student.major,
-      degree: row.student.degree,
-      entryYear: row.student.entryYear,
-      nationalIdLast4: row.student.nationalIdLast4,
-      status: row.student.status as StudentStatus,
+      sessionId: String(row.sessionId),
+      studentId: String(row.studentId),
+      accountId: String(row.accountId),
+      studentNumber: String(row.studentNumber),
+      fullName: String(row.studentName),
+      faculty: String(row.faculty ?? ''),
+      major: String(row.major ?? ''),
+      degree: String(row.degree ?? ''),
+      entryYear: row.entryYear == null ? null : Number(row.entryYear),
+      nationalIdLast4: String(row.nationalIdLast4 ?? ''),
+      status: String(row.studentStatus) as StudentStatus,
       customerGroup: 'Student',
-      balanceRial: Number(row.account.balanceRial),
+      balanceRial: Number(row.balanceRial ?? 0),
+      lastLoginAt:
+        row.studentLastLoginAt instanceof Date
+          ? row.studentLastLoginAt
+          : row.studentLastLoginAt
+            ? new Date(String(row.studentLastLoginAt))
+            : null,
     };
-  }
-
-  if (session.subjectType === 'Employee') {
-    const rows = await deps.db
-      .select({ employee: employees, account: accounts })
-      .from(employees)
-      .leftJoin(accounts, eq(accounts.employeeId, employees.id))
-      .where(eq(employees.id, session.subjectId))
-      .limit(1);
-    const row = rows[0];
-    if (!row?.employee || row.employee.status !== 'Active') return null;
-    if (!row.account || !row.account.isActive) return null;
-    return {
+  } else if (subjectType === 'Employee') {
+    if (!row.employeeId || String(row.employeeStatus) !== 'Active') return null;
+    if (!row.accountId || !row.accountIsActive) return null;
+    ctx = {
       kind: 'employee',
       subjectType: 'Employee',
-      sessionId: session.id,
-      employeeId: row.employee.id,
-      accountId: row.account.id,
-      username: row.employee.username,
-      fullName: row.employee.fullName,
-      department: row.employee.department,
-      customerGroup: row.employee.customerGroup as 'Employee' | 'Faculty' | 'Contractor',
-      status: row.employee.status as EmployeeStatus,
-      mustChangePassword: row.employee.mustChangePassword,
-      balanceRial: Number(row.account.balanceRial),
+      sessionId: String(row.sessionId),
+      employeeId: String(row.employeeId),
+      accountId: String(row.accountId),
+      username: String(row.employeeUsername),
+      fullName: String(row.employeeName),
+      department: String(row.department ?? ''),
+      customerGroup: String(row.employeeGroup) as 'Employee' | 'Faculty' | 'Contractor',
+      status: String(row.employeeStatus) as EmployeeStatus,
+      mustChangePassword: Boolean(row.employeeMustChange),
+      balanceRial: Number(row.balanceRial ?? 0),
+    };
+  } else {
+    if (!row.staffId || String(row.staffStatus) !== 'Active') return null;
+    const role = String(row.staffRole) as StaffRole;
+    ctx = {
+      kind: 'staff',
+      subjectType: 'Staff',
+      sessionId: String(row.sessionId),
+      staffId: String(row.staffId),
+      username: String(row.staffUsername),
+      fullName: String(row.staffName),
+      role,
+      permissions: permissionsOf(role),
+      status: String(row.staffStatus) as StaffStatus,
+      contractorId: row.contractorId == null ? null : String(row.contractorId),
+      cafeteriaId: row.cafeteriaId == null ? null : String(row.cafeteriaId),
+      mustChangePassword: Boolean(row.staffMustChange),
     };
   }
 
-  const rows = await deps.db.select().from(staffUsers).where(eq(staffUsers.id, session.subjectId)).limit(1);
-  const user = rows[0];
-  if (!user || user.status !== 'Active') return null;
-  return {
-    kind: 'staff',
-    subjectType: 'Staff',
-    sessionId: session.id,
-    staffId: user.id,
-    username: user.username,
-    fullName: user.fullName,
-    role: user.role as StaffRole,
-    permissions: permissionsOf(user.role as StaffRole),
-    status: user.status as StaffStatus,
-    contractorId: user.contractorId,
-    cafeteriaId: user.cafeteriaId,
-    mustChangePassword: user.mustChangePassword,
-  };
+  if (options?.touch) {
+    const expiresAt = row.expiresAt instanceof Date ? row.expiresAt : new Date(String(row.expiresAt));
+    const absoluteExpiresAt = row.absoluteExpiresAt instanceof Date ? row.absoluteExpiresAt : new Date(String(row.absoluteExpiresAt));
+    const lastSeenAt = row.lastSeenAt instanceof Date ? row.lastSeenAt : new Date(String(row.lastSeenAt));
+    void touchSession(deps, {
+      id: String(row.sessionId),
+      subjectType: subjectType as 'Student' | 'Employee' | 'Staff',
+      expiresAt,
+      absoluteExpiresAt,
+      lastSeenAt,
+    }).catch(() => undefined);
+  }
+
+  return ctx;
 }
 
 /** تغییر رمز عبور (کارکنان و کارمندان) + ابطال سایر نشست‌ها. */

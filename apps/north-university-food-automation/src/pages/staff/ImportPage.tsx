@@ -39,7 +39,7 @@ type Preview = {
   errorReport: { rowNumber: number; studentNumber: string; errors: string[] }[];
 };
 const NONE = '__none__';
-const KIND: Record<string, string> = { error: 'خطا', new: 'جدید', changed: 'تغییر', unchanged: 'بدون تغییر', returning: 'بازگشتی' };
+const KIND: Record<string, string> = { error: 'خطا', new: 'جدید', changed: 'تغییر', unchanged: 'بدون تغییر', returning: 'بازگشتی', conflict: 'تعارض (رد می‌شود)' };
 const STEPS = ['انتخاب فایل', 'تطبیق ستون‌ها', 'پیش‌نمایش و بررسی', 'گزارش نهایی'];
 
 function guessMapping(headers: string[]) {

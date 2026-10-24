@@ -82,18 +82,42 @@ export const employeesList = ep('GET', '/employees');
 export const employeeSave = ep('PUT', '/employees');
 export const employeesBulk = ep('POST', '/employees/bulk');
 // imports — preview uploads the real .xlsx; the server parses and validates it
-export const importList = ep('GET', '/imports');
+type ImpSummary = { total?: number; NEW?: number; UPDATE?: number; UNCHANGED?: number; CONFLICT?: number; ERROR?: number; REMOVED?: number; policy?: string };
+const IMPORT_KIND: Record<string, string> = { NEW: 'new', UPDATE: 'changed', UNCHANGED: 'unchanged', ERROR: 'error', CONFLICT: 'conflict' };
+const impSummary = (s: ImpSummary) => ({ total: s.total ?? 0, valid: (s.total ?? 0) - (s.ERROR ?? 0), errors: s.ERROR ?? 0, new: s.NEW ?? 0, changed: s.UPDATE ?? 0, unchanged: s.UNCHANGED ?? 0, conflicts: s.CONFLICT ?? 0, returning: 0, removed: s.REMOVED ?? 0 });
+/** Server import history → shape the import page renders. */
+export const importList = async (i?: In) => {
+  const r = await request('GET', '/imports', i);
+  return {
+    batches: (r.batches as { id: string; fileName: string; status: string; summary: ImpSummary; createdAt: string; createdBy: string }[]).map((b) => {
+      const s = impSummary(b.summary ?? {});
+      return { id: b.id, fileName: b.fileName, status: b.status, totalRows: s.total, validRows: s.valid, errorRows: s.errors, newRows: s.new, changedRows: s.changed, errorReport: '[]', createdAt: b.createdAt, uploadedBy: b.createdBy };
+    }),
+  };
+};
 export const importCancel = (i: In) => request('POST', '/imports/:batchId/cancel', i);
-export const importCommit = (i: In) => request('POST', '/imports/:batchId/commit', i);
+export const importCommit = async (i: In) => {
+  const r = await request('POST', '/imports/:batchId/commit', i);
+  return { ...r, written: (r.created ?? 0) + (r.updated ?? 0), removed: r.removed ?? 0 };
+};
 export const importUndo = (i: In) => request('POST', '/imports/:batchId/undo', i);
 export const importApproveConflict = (i: In) => request('POST', '/imports/:batchId/approve-conflict', i);
-export const importPreview = (i: { file: File; policy: string; fullSync: boolean; mapping?: Record<string, string> } & In) => {
+export const importPreview = async (i: { file: File; policy: string; fullSync: boolean; mapping?: Record<string, string> } & In) => {
   const fd = new FormData();
   fd.set('policy', i.policy);
   fd.set('fullSync', String(i.fullSync));
   if (i.mapping) fd.set('mapping', JSON.stringify(i.mapping));
   fd.set('file', i.file, i.file.name);
-  return request('POST', '/imports/preview', undefined, fd);
+  const r = await request('POST', '/imports/preview', undefined, fd);
+  const sum = r.summary as ImpSummary;
+  return {
+    ...r,
+    summary: impSummary(sum),
+    blocked: (sum.ERROR ?? 0) > 0 && i.policy !== 'SkipInvalidRows',
+    duplicateOfCommitted: false,
+    rows: (r.rows as { kind: string }[]).map((x) => ({ ...x, kind: IMPORT_KIND[x.kind] ?? x.kind })),
+    removed: (r.removed as string[]).map((sn) => ({ id: sn, studentNumber: sn, fullName: '', faculty: '', major: '', status: 'Active' })),
+  };
 };
 // notifications / settings / staff / reports / reservations
 export const notificationsAdmin = (i?: In) => (i?.send ? request('POST', '/notifications', i.send) : request('GET', '/notifications'));

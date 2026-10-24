@@ -1,31 +1,44 @@
-import { Activity, CheckCircle2, GraduationCap, Utensils, XCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Activity, CheckCircle2, GraduationCap, Utensils, XCircle } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { adminDashboard } from '../../lib/api';
 import { ErrorState, LoadingBlock, PageHeader, Section, StatCard, Pill } from '../../components/ui-kit';
 import { MEALS, faDate, faDateTime, faNum, faShort, rial } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
+import { useSession } from '../../lib/session';
 
+type Kpis = { activeStudents: number; totalStudents: number; activeEmployees: number; todayCapacity: number; todayReserved: number; todayDelivered: number; todayCancelled: number; todayValueRial: number; needsReview: number; offlineConflicts: number };
 type Dash = {
-  today: string; activeStudents: number; totalStudents: number; todayCapacity: number; todayReserved: number; todayDelivered: number; todayCancelled: number;
+  today: string; kpis: Kpis;
   trend: { date: string; reserved: number; delivered: number; noShow: number }[]; byMeal: { meal: string; capacity: number; reserved: number }[];
-  lastImport: { fileName: string; status: string; totalRows: number; validRows: number; errorRows: number; createdAt: string } | null;
+  lastImport: { fileName: string; status: string; totalRows: number; errorRows: number; newRows: number; updatedRows: number; createdAt: string } | null;
   money: { credits: number; debits: number; refunds: number; liability: number } | null;
 };
 
 export default function AdminDashboard() {
+  const { me } = useSession();
+  const perms = me?.kind === 'staff' ? me.staff.perms : [];
   const { data, error, loading, reload } = useLoad(async (token) => (await adminDashboard({ token })) as Dash);
   if (loading) return <LoadingBlock rows={5} />;
   if (error || !data) return <ErrorState message={error ?? ''} onRetry={reload} />;
+  const k = data.kpis;
   const trend = data.trend.map((t) => ({ ...t, label: faShort(t.date) }));
   return (
     <>
       <PageHeader title="داشبورد مدیریتی" subtitle={faDate(data.today)} />
+      {(k.needsReview > 0 || k.offlineConflicts > 0) && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          {k.needsReview > 0 && <span>{faNum(k.needsReview)} پرداخت نیازمند بررسی {perms.includes('paymentsReview') && <Link to="/payments-review" className="font-semibold text-primary underline">بررسی</Link>}</span>}
+          {k.offlineConflicts > 0 && <span>{faNum(k.offlineConflicts)} تعارض تحویل آفلاین در ۷ روز گذشته</span>}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatCard label="دانشجویان فعال" value={faNum(data.activeStudents)} hint={`از ${faNum(data.totalStudents)}`} icon={<GraduationCap className="h-5 w-5" />} />
-        <StatCard label="رزرو امروز" value={faNum(data.todayReserved)} hint={`ظرفیت ${faNum(data.todayCapacity)}`} icon={<Utensils className="h-5 w-5" />} />
-        <StatCard label="ظرفیت باقی‌مانده" value={faNum(Math.max(0, data.todayCapacity - data.todayReserved))} icon={<Activity className="h-5 w-5" />} />
-        <StatCard label="تحویل‌شده امروز" value={faNum(data.todayDelivered)} icon={<CheckCircle2 className="h-5 w-5" />} />
-        <StatCard label="لغو امروز" value={faNum(data.todayCancelled)} icon={<XCircle className="h-5 w-5" />} />
+        <StatCard label="دانشجویان فعال" value={faNum(k.activeStudents)} hint={`از ${faNum(k.totalStudents)}`} icon={<GraduationCap className="h-5 w-5" />} />
+        <StatCard label="رزرو امروز" value={faNum(k.todayReserved)} hint={`ظرفیت ${faNum(k.todayCapacity)}`} icon={<Utensils className="h-5 w-5" />} />
+        <StatCard label="ظرفیت باقی‌مانده" value={faNum(Math.max(0, k.todayCapacity - k.todayReserved))} icon={<Activity className="h-5 w-5" />} />
+        <StatCard label="تحویل‌شده امروز" value={faNum(k.todayDelivered)} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="لغو امروز" value={faNum(k.todayCancelled)} icon={<XCircle className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Section title="روند رزرو، تحویل و عدم مراجعه" className="lg:col-span-2">
@@ -76,8 +89,8 @@ export default function AdminDashboard() {
         <Section title="آخرین واردسازی دانشجویان">
           {!data.lastImport ? <p className="text-sm text-muted-foreground">هنوز واردسازی انجام نشده است.</p> : (
             <div className="text-sm">
-              <div className="flex items-center justify-between"><span className="font-medium">{data.lastImport.fileName}</span><Pill tone={data.lastImport.status === 'Committed' ? 'success' : data.lastImport.status === 'Failed' ? 'danger' : 'muted'}>{({ Committed: 'ثبت‌شده', Preview: 'پیش‌نمایش', Cancelled: 'لغوشده', Failed: 'ناموفق' } as Record<string, string>)[data.lastImport.status] ?? data.lastImport.status}</Pill></div>
-              <div className="mt-2 text-muted-foreground">{faDateTime(data.lastImport.createdAt)} · {faNum(data.lastImport.totalRows)} ردیف · {faNum(data.lastImport.validRows)} معتبر · {faNum(data.lastImport.errorRows)} خطا</div>
+              <div className="flex items-center justify-between"><span className="font-medium">{data.lastImport.fileName}</span><Pill tone={data.lastImport.status === 'Committed' ? 'success' : data.lastImport.status === 'Undone' ? 'warning' : 'muted'}>{({ Committed: 'ثبت‌شده', Previewed: 'پیش‌نمایش', Committing: 'در حال ثبت', Cancelled: 'لغوشده', Undone: 'بازگردانی‌شده' } as Record<string, string>)[data.lastImport.status] ?? data.lastImport.status}</Pill></div>
+              <div className="mt-2 text-muted-foreground">{faDateTime(data.lastImport.createdAt)} · {faNum(data.lastImport.totalRows)} ردیف · {faNum(data.lastImport.newRows)} جدید · {faNum(data.lastImport.updatedRows)} به‌روزرسانی · {faNum(data.lastImport.errorRows)} خطا</div>
             </div>
           )}
         </Section>

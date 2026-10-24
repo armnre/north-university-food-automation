@@ -34,7 +34,7 @@ export const RES_STATUS: Record<string, { label: string; tone: Tone }> = {
   Rejected: { label: 'رد شده', tone: 'danger' },
 };
 export const LEDGER_TYPES: Record<string, string> = {
-  OnlinePayment: 'پرداخت اینترنتی', ManualCredit: 'شارژ دستی', ManualDebit: 'برداشت دستی', ReservationDebit: 'کسر بابت رزرو', CancellationRefund: 'بازپرداخت لغو', CapacityRefund: 'بازگشت رزرو ردشده',
+  OnlinePayment: 'پرداخت اینترنتی', MANUAL_CASH: 'شارژ/برداشت نقدی', ManualAdjust: 'تعدیل دستی', ReservationDebit: 'کسر بابت رزرو', CancelRefund: 'بازپرداخت لغو', MealCancelledRefund: 'بازپرداخت لغو وعده', SoldOutRefund: 'بازپرداخت اتمام غذا', CapacityRefund: 'بازگشت رزرو ردشده',
 };
 export const ROLES: Record<string, string> = {
   SuperAdmin: 'مدیر ارشد سامانه', StudentAffairs: 'معاونت دانشجویی', Contractor: 'پیمانکار تغذیه', Operator: 'اپراتور سلف', Finance: 'مسئول مالی',

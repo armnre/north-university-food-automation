@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { canManage, normalizeDigits, ROLE_PERMISSIONS, STAFF_ROLES, tehranDate, type StaffRole } from '@food/shared';
+import { canManage, hasPermission, normalizeDigits, ROLE_PERMISSIONS, STAFF_ROLES, tehranDate, type StaffRole } from '@food/shared';
 import type { Db } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { randomCode } from '../lib/crypto.js';
@@ -426,35 +426,72 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     };
   });
 
-  app.get('/api/v1/admin/dashboard', { config: { access: 'dashboardView' } }, async () => {
+  app.get('/api/v1/admin/dashboard', { config: { access: 'dashboardView' } }, async (req) => {
+    const p = requirePrincipal(req);
     const today = tehranDate();
     const r = await db.execute<Record<string, number>>(sql`SELECT
       (SELECT count(*) FROM students WHERE status='Active' AND deleted_at IS NULL)::int AS active_students,
+      (SELECT count(*) FROM students WHERE deleted_at IS NULL)::int AS total_students,
       (SELECT count(*) FROM employees WHERE active)::int AS active_employees,
+      (SELECT COALESCE(sum(capacity),0) FROM meal_offerings WHERE service_date=${today} AND status IN ('Published','SoldOut'))::int AS today_capacity,
       (SELECT count(*) FROM reservations r JOIN meal_offerings o ON o.id=r.offering_id WHERE o.service_date=${today} AND r.status IN ('Reserved','Delivered'))::int AS today_reserved,
       (SELECT count(*) FROM reservations r JOIN meal_offerings o ON o.id=r.offering_id WHERE o.service_date=${today} AND r.status='Delivered')::int AS today_delivered,
+      (SELECT count(*) FROM reservations r JOIN meal_offerings o ON o.id=r.offering_id WHERE o.service_date=${today} AND r.status='Cancelled')::int AS today_cancelled,
       (SELECT COALESCE(sum(r.price_rial),0) FROM reservations r JOIN meal_offerings o ON o.id=r.offering_id WHERE o.service_date=${today} AND r.status IN ('Reserved','Delivered','NoShow'))::bigint AS today_value,
       (SELECT count(*) FROM payments WHERE status='NeedsReview')::int AS needs_review,
       (SELECT count(*) FROM deliveries WHERE outcome='OfflineConflict' AND created_at > now() - interval '7 days')::int AS offline_conflicts`);
-    const trend = await db.execute<{
-      d: string;
-      reserved: number;
-      delivered: number;
-    }>(sql`SELECT o.service_date AS d, count(*) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow'))::int reserved, count(*) FILTER (WHERE r.status='Delivered')::int delivered
+    const trend = await db.execute<{ d: string; reserved: number; delivered: number; no_show: number }>(sql`SELECT to_char(o.service_date,'YYYY-MM-DD') AS d,
+      count(*) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow'))::int reserved, count(*) FILTER (WHERE r.status='Delivered')::int delivered, count(*) FILTER (WHERE r.status='NoShow')::int no_show
       FROM meal_offerings o LEFT JOIN reservations r ON r.offering_id=o.id WHERE o.service_date BETWEEN (${today}::date - 13) AND ${today}::date GROUP BY 1 ORDER BY 1`);
+    const byMeal = await db.execute<{ code: string; capacity: number; reserved: number }>(sql`SELECT ms.code, sum(o.capacity)::int AS capacity,
+      sum((SELECT count(*) FROM reservations r WHERE r.offering_id=o.id AND r.status IN ('Reserved','Delivered')))::int AS reserved
+      FROM meal_offerings o JOIN meal_slots ms ON ms.id=o.meal_slot_id
+      WHERE o.service_date=${today} AND o.status IN ('Published','SoldOut') GROUP BY ms.code, ms.start_time ORDER BY ms.start_time`);
+    const imp = await db.execute<Record<string, unknown>>(
+      sql`SELECT file_name, status, summary, created_at FROM import_batches ORDER BY created_at DESC LIMIT 1`,
+    );
+    let money: { credits: number; debits: number; refunds: number; liability: number } | null = null;
+    if (hasPermission(p.role, 'financeRead')) {
+      const m = await db.execute<Record<string, bigint>>(sql`SELECT
+        COALESCE(sum(e.amount_rial) FILTER (WHERE t.type IN ('MANUAL_CASH','ManualAdjust','OnlinePayment') AND e.amount_rial > 0),0)::bigint AS credits,
+        COALESCE(-sum(e.amount_rial) FILTER (WHERE t.type='ReservationDebit'),0)::bigint AS debits,
+        COALESCE(sum(e.amount_rial) FILTER (WHERE t.type LIKE '%Refund'),0)::bigint AS refunds,
+        (SELECT COALESCE(sum(balance_rial),0) FROM accounts WHERE kind='Customer')::bigint AS liability
+        FROM ledger_entries e JOIN ledger_transactions t ON t.id=e.transaction_id JOIN accounts a ON a.id=e.account_id WHERE a.kind='Customer'`);
+      const x = m.rows[0]!;
+      money = { credits: n(x.credits!), debits: n(x.debits!), refunds: n(x.refunds!), liability: n(x.liability!) };
+    }
     const k = r.rows[0]!;
+    const li = imp.rows[0];
+    const sm = (li?.summary ?? {}) as Record<string, number>;
     return {
       today,
       kpis: {
         activeStudents: k.active_students,
+        totalStudents: k.total_students,
         activeEmployees: k.active_employees,
+        todayCapacity: k.today_capacity,
         todayReserved: k.today_reserved,
         todayDelivered: k.today_delivered,
+        todayCancelled: k.today_cancelled,
         todayValueRial: Number(k.today_value),
         needsReview: k.needs_review,
         offlineConflicts: k.offline_conflicts,
       },
-      trend: trend.rows,
+      trend: trend.rows.map((t) => ({ date: t.d, reserved: t.reserved, delivered: t.delivered, noShow: t.no_show })),
+      byMeal: byMeal.rows.map((m) => ({ meal: MEAL_TYPE[m.code] ?? m.code, capacity: m.capacity, reserved: m.reserved })),
+      lastImport: li
+        ? {
+            fileName: li.file_name as string,
+            status: li.status as string,
+            totalRows: sm.total ?? 0,
+            errorRows: sm.ERROR ?? 0,
+            newRows: sm.NEW ?? 0,
+            updatedRows: sm.UPDATE ?? 0,
+            createdAt: iso(li.created_at as Date),
+          }
+        : null,
+      money,
     };
   });
 

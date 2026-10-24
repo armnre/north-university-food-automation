@@ -730,4 +730,15 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
 export const csvCell = (v: string) => {
   const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+
+  // ── background jobs: last run of each job (SuperAdmin) ────────────────
+  app.get('/api/v1/admin/jobs', async (req) => {
+    if (staffRole(req) !== 'SuperAdmin') fail('FORBIDDEN', 'شما به این بخش دسترسی ندارید.');
+    const r = await db.execute<Record<string, unknown>>(sql`
+      SELECT DISTINCT ON (job) job, started_at, finished_at, ok, detail,
+        (SELECT count(*)::int FROM job_runs j2 WHERE j2.job=j.job AND j2.ok=false AND j2.started_at > now() - interval '24 hours') AS failures_24h
+      FROM job_runs j ORDER BY job, started_at DESC`);
+    const pending = await db.execute<{ c: number }>(sql`SELECT count(*)::int AS c FROM notification_outbox WHERE sent_at IS NULL AND attempts < 6`);
+    return { jobs: r.rows, smsPending: pending.rows[0]?.c ?? 0 };
+  });
 };

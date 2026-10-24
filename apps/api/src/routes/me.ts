@@ -174,4 +174,27 @@ export function meRoutes(app: FastifyInstance, db: Db) {
       helpText: String(s.help_text ?? ''),
     };
   });
+
+  app.get('/api/v1/me/profile', self, async (req) => {
+    const c = await currentCustomer(db, req);
+    const r = await db.execute<
+      Record<string, unknown>
+    >(sql`SELECT a.balance_rial, s.student_number, s.first_name AS sf, s.last_name AS sl, s.faculty, s.major, s.national_id_last4, s.last_login_at AS sll,
+      e.username, e.first_name AS ef, e.last_name AS el, e.kind, e.last_login_at AS ell FROM accounts a LEFT JOIN students s ON s.id=a.student_id LEFT JOIN employees e ON e.id=a.employee_id WHERE a.id=${c.accountId}`);
+    const x = r.rows[0]!;
+    const prev = await db.execute<{ created_at: string }>(
+      sql`SELECT created_at FROM sessions WHERE subject_id=${c.subjectId} ORDER BY created_at DESC OFFSET 1 LIMIT 1`,
+    );
+    return {
+      customerGroup: c.group,
+      balanceRial: n(x.balance_rial as bigint),
+      fullName: c.group === 'Student' ? `${x.sf} ${x.sl}` : `${x.ef} ${x.el}`,
+      studentNumber: (x.student_number as string | null) ?? null,
+      username: (x.username as string | null) ?? null,
+      faculty: (x.faculty as string | null) ?? '',
+      major: (x.major as string | null) ?? '',
+      nationalIdMasked: x.national_id_last4 ? `******${x.national_id_last4}` : null,
+      previousLoginAt: prev.rows[0] ? iso(prev.rows[0].created_at) : null,
+    };
+  });
 }

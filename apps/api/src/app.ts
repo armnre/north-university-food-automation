@@ -16,10 +16,17 @@ import { meRoutes } from './routes/me.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { offeringRoutes } from './routes/offerings.js';
 import { deliveryRoutes } from './routes/delivery.js';
+import { adminRoutes } from './routes/admin.js';
+import { paymentRoutes } from './routes/payments.js';
+import { importRoutes } from './routes/imports.js';
+import multipart from '@fastify/multipart';
+import { reportRoutes } from './routes/reports.js';
+import { uploadRoutes } from './routes/uploads.js';
+import { gatewayFromEnv, type PaymentGateway } from './services/gateway.js';
 
-export type AppDeps = { env: Env; db: Db; pool: pg.Pool };
+export type AppDeps = { env: Env; db: Db; pool: pg.Pool; gateway?: PaymentGateway | null };
 
-export async function buildApp({ env, db, pool }: AppDeps): Promise<FastifyInstance> {
+export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger:
       env.NODE_ENV === 'test'
@@ -37,6 +44,7 @@ export async function buildApp({ env, db, pool }: AppDeps): Promise<FastifyInsta
   });
 
   await app.register(cookie);
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 10 } });
   await app.register(helmet, {
     contentSecurityPolicy: {
       useDefaults: false,
@@ -92,5 +100,10 @@ export async function buildApp({ env, db, pool }: AppDeps): Promise<FastifyInsta
   catalogRoutes(app, db);
   offeringRoutes(app, db);
   deliveryRoutes(app, db);
+  adminRoutes(app, db);
+  importRoutes(app, db, env);
+  reportRoutes(app, db);
+  uploadRoutes(app, db, env);
+  paymentRoutes(app, db, env, gateway === undefined ? gatewayFromEnv(env) : gateway);
   return app;
 }

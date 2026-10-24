@@ -16,7 +16,7 @@
 | `authStaffLogin` | `POST /api/v1/auth/staff/login` | staff_users, students, employees, sessions, login_attempts, captchas, audit_logs | LoginPage.tsx |
 | `authStudentLogin` | `POST /api/v1/auth/student/login` | staff_users, students, employees, sessions, login_attempts, captchas, audit_logs | LoginPage.tsx |
 | `catalogList` | `GET /api/v1/catalog` | contractors, cafeterias, foods | CatalogPage.tsx, FoodsPage.tsx, OfferingsPage.tsx, ReportsPage.tsx, ReservationsPage.tsx |
-| `catalogSave` | `PUT /api/v1/catalog/{contractors|cafeterias|foods}/:id?` | contractors, cafeterias, foods | CatalogPage.tsx, FoodsPage.tsx |
+| `catalogSave` | `PUT /api/v1/catalog` | contractors, cafeterias, foods | CatalogPage.tsx, FoodsPage.tsx |
 | `deliveryConfirm` | `POST /api/v1/delivery/confirm` | reservations, deliveries | DeliveryPage.tsx |
 | `deliveryScan` | `POST /api/v1/delivery/scan` | reservations, deliveries | DeliveryPage.tsx |
 | `deliveryStats` | `GET /api/v1/delivery/stats` | reservations, deliveries | DeliveryPage.tsx |
@@ -27,7 +27,7 @@
 | `importList` | `GET /api/v1/imports` | import_batches, import_rows, students, sessions | ImportPage.tsx |
 | `importPreview` | `POST /api/v1/imports/preview (multipart .xlsx)` | import_batches, import_rows, students, sessions | ImportPage.tsx |
 | `notificationsAdmin` | `GET|POST /api/v1/notifications` | notifications, notification_outbox | NotifyPage.tsx |
-| `offeringSave` | `PUT /api/v1/offerings/:id?` | meal_offerings, offering_prices, meal_slots | OfferingsPage.tsx |
+| `offeringSave` | `PUT /api/v1/offerings` | meal_offerings, offering_prices, meal_slots | OfferingsPage.tsx |
 | `offeringsBulk` | `POST /api/v1/offerings/bulk` | meal_offerings, offering_prices, meal_slots | MenuTools.tsx |
 | `offeringsList` | `GET /api/v1/offerings` | meal_offerings, offering_prices, meal_slots | KitchenDashboard.tsx, OfferingsPage.tsx |
 | `reportsAdvanced` | `GET /api/v1/reports/advanced` | reservations, deliveries, ledger_* | ManagementReports.tsx |
@@ -35,7 +35,7 @@
 | `reservationsAdminList` | `GET /api/v1/reservations` | reservations, reservation_history | OfferingsPage.tsx, ReservationsPage.tsx |
 | `settingsManage` | `GET|PUT /api/v1/settings` | system_settings, audit_logs | SettingsPage.tsx |
 | `staffList` | `GET /api/v1/staff` | staff_users, audit_logs | UsersPage.tsx |
-| `staffSave` | `PUT /api/v1/staff/:id?` | staff_users, audit_logs | UsersPage.tsx |
+| `staffSave` | `PUT /api/v1/staff` | staff_users, audit_logs | UsersPage.tsx |
 | `studentCheckout` | `POST /api/v1/payments/checkout/start (+ GET /payments/zarinpal/callback, POST /payments/result)` | meal_offerings, reservations, accounts, ledger_*, payments, notifications | Checkout.tsx |
 | `studentMenu` | `GET /api/v1/me/menu` | meal_offerings, reservations, accounts, ledger_*, payments, notifications | MenuPage.tsx |
 | `studentNotifications` | `GET /api/v1/me/notifications` | meal_offerings, reservations, accounts, ledger_*, payments, notifications | NotificationsPage.tsx, StudentApp.tsx |
@@ -44,9 +44,12 @@
 | `studentWallet` | `GET /api/v1/me/wallet` | meal_offerings, reservations, accounts, ledger_*, payments, notifications | StudentDashboard.tsx, WalletPage.tsx |
 
 ## endpointهای جدید (بدون معادل در Zite)
-`POST /auth/employee/login`، `POST /auth/logout-all`، `GET/DELETE /auth/sessions`، `POST /auth/change-password`، `GET /auth/captcha`، `/employees` (CRUD + ایمپورت)، `POST /me/reservations/:id/cancel`، `POST /me/reservations/:id/reissue-qr`، `GET /me/profile`، `POST /offerings/:id/sold-out`، `POST /offerings/:id/cancel`، `GET /delivery/offline-manifest`، `POST /delivery/sync`، `POST /imports/:id/undo`، `GET /reports/export`، `POST /payments/reconcile`، `GET /payments/needs-review`، `POST /uploads/food-image`، `GET /health`، `GET /ready`.
+`POST /auth/employee/login`، `POST /auth/logout-all`، `GET/DELETE /auth/sessions`، `POST /auth/change-password`، `GET /auth/captcha`، `/employees` (CRUD + ایمپورت)، `POST /me/reservations/:id/cancel`، `POST /me/reservations/:id/reissue-qr`، `GET /me/profile`، `POST /offerings/:id/sold-out|cancel`، `POST /reservations/:id/cancel` (لغو اداری)، `GET /payments/needs-review`، `POST /payments/:id/resolve`، `POST /imports/:id/approve-conflict`، `POST /employees/bulk`، `GET /auth/csrf`، `GET /delivery/offline-manifest`، `POST /delivery/sync`، `POST /imports/:id/undo`، `GET /reports/export`، `POST /payments/reconcile`، `GET /payments/needs-review`، `POST /uploads/food-image`، `GET /health`، `GET /ready`.
 
 ## وابستگی‌های Zite در فرانت که باید حذف شوند
 - `zitejs/api` در ۲۴ فایل صفحه/کامپوننت ← با alias در Vite به `src/lib/api.ts` (adapter) نگاشت می‌شود تا **صفحه‌ها دست نخورند**.
 - `zitejs/upload` در `FoodsPage.tsx` ← `uploadFoodImage` در همان adapter.
 - `packages/components/lib/legacyAuth.ts` و پارامتر `token` در ورودی همه‌ی endpointها ← کوکی HttpOnly؛ adapter پارامتر `token` را نادیده می‌گیرد.
+
+## وضعیت پورت
+۳۷ از ۳۷ endpoint قدیمی معادل REST دارند (فهرست کامل و سطح دسترسی هر route در `docs/API.md` که خودکار از رجیستری تولید می‌شود؛ ۶۷ route).

@@ -20,7 +20,8 @@
     "db:migrate": "npm run db:migrate -w @food/api",
     "prepare": "husky || true",
     "docs:rbac": "npm run build -w @food/shared && node scripts/gen-rbac-doc.mjs",
-    "docs:rbac:check": "node scripts/gen-rbac-doc.mjs --check"
+    "docs:rbac:check": "node scripts/gen-rbac-doc.mjs --check",
+    "docs:api": "tsx scripts/gen-api-doc.ts"
   },
   "dependencies": {
     "zitejs": "0.9.136"

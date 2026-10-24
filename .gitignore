@@ -4,3 +4,11 @@ dist
 .tsbuildinfo
 __zite__*
 .npmrc
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results

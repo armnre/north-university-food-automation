@@ -1,15 +1,38 @@
 {
   "name": "food-automation",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/*",
-    "automations/*",
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "zitejs check"
+    "dev": "npm run dev -w @food/api",
+    "build": "npm run build -w @food/shared && npm run build -w @food/api",
+    "lint": "eslint apps/api/src apps/api/test packages/shared/src",
+    "typecheck": "npm run typecheck -w @food/shared && npm run typecheck -w @food/api",
+    "format:check": "prettier --check \"apps/api/{src,test}/**/*.ts\" \"packages/shared/src/**/*.ts\"",
+    "format": "prettier --write \"apps/api/{src,test}/**/*.ts\" \"packages/shared/src/**/*.ts\"",
+    "test": "npm run test -w @food/shared",
+    "test:integration": "npm run test:integration -w @food/api",
+    "test:e2e": "echo \"E2E: added in stage 6\" && exit 1",
+    "db:generate": "npm run db:generate -w @food/api",
+    "db:migrate": "npm run db:migrate -w @food/api",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "zitejs": "0.9.136"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "husky": "^9.1.7",
+    "prettier": "^3.9.10",
+    "typescript": "5.6",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

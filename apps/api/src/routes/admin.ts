@@ -310,20 +310,48 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
   });
 
   // ── students (admin) ───────────────────────────────────────────────────
+  const STUDENT_SORT: Record<string, string> = {
+    studentNumber: 's.student_number',
+    fullName: "s.last_name || ' ' || s.first_name",
+    balance: 'COALESCE(a.balance_rial, 0)',
+    reservations: 'reservations',
+    addedAt: 's.created_at',
+    removedAt: "CASE WHEN s.status='Removed' THEN s.updated_at END",
+  };
   app.get('/api/v1/admin/students', { config: { access: 'studentsRead' } }, async (req) => {
     const q = z
-      .object({ search: z.string().max(80).optional(), status: z.string().max(20).optional(), faculty: z.string().max(100).optional(), ...page })
+      .object({
+        search: z.string().max(80).optional(),
+        status: z.string().max(20).optional(),
+        faculty: z.string().max(100).optional(),
+        major: z.string().max(100).optional(),
+        degree: z.string().max(50).optional(),
+        entryYear: z.coerce.number().int().optional(),
+        sort: z.enum(['studentNumber', 'fullName', 'balance', 'reservations', 'addedAt', 'removedAt']).default('studentNumber'),
+        dir: z.enum(['asc', 'desc']).default('asc'),
+        offset: z.coerce.number().int().min(0).default(0),
+        limit: z.coerce.number().int().min(1).max(2000).default(50),
+      })
       .parse(req.query);
     const s = like(q.search ? normalizeDigits(q.search) : undefined);
-    const r = await db.execute<
-      Record<string, unknown>
-    >(sql`SELECT s.id, s.student_number, s.first_name, s.last_name, s.faculty, s.major, s.degree, s.entry_year, s.status, s.national_id_last4, s.last_login_at, a.balance_rial, count(*) OVER()::int AS total
+    const st = q.status === 'Inactive' ? 'OnLeave' : (q.status ?? null);
+    const order = sql.raw(`${STUDENT_SORT[q.sort]} ${q.dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST, s.student_number`);
+    const r = await db.execute<Record<string, unknown>>(sql`SELECT s.id, s.student_number, s.first_name, s.last_name, s.faculty, s.major, s.degree, s.entry_year, s.status, s.national_id_last4, s.last_login_at,
+        s.created_at, s.updated_at, a.balance_rial, count(*) OVER()::int AS total,
+        (SELECT count(*) FROM reservations rv WHERE rv.account_id=a.id AND rv.status IN ('Reserved','Delivered'))::int AS reservations
       FROM students s LEFT JOIN accounts a ON a.student_id=s.id
-      WHERE s.deleted_at IS NULL AND (${s}::text IS NULL OR s.student_number ILIKE ${s} OR s.first_name||' '||s.last_name ILIKE ${s}) AND (${q.status ?? null}::text IS NULL OR s.status::text=${q.status ?? null}) AND (${q.faculty ?? null}::text IS NULL OR s.faculty=${q.faculty ?? null})
-      ORDER BY s.student_number LIMIT ${q.limit} OFFSET ${q.offset}`);
-    const facets = await db.execute<{ status: string; faculty: string | null; c: number }>(
-      sql`SELECT status::text, faculty, count(*)::int c FROM students WHERE deleted_at IS NULL GROUP BY 1,2`,
-    );
+      WHERE s.deleted_at IS NULL AND (${s}::text IS NULL OR s.student_number ILIKE ${s} OR s.first_name||' '||s.last_name ILIKE ${s})
+        AND (${st}::text IS NULL OR s.status::text=${st}) AND (${q.faculty ?? null}::text IS NULL OR s.faculty=${q.faculty ?? null})
+        AND (${q.major ?? null}::text IS NULL OR s.major=${q.major ?? null}) AND (${q.degree ?? null}::text IS NULL OR s.degree=${q.degree ?? null})
+        AND (${q.entryYear ?? null}::int IS NULL OR s.entry_year=${q.entryYear ?? null})
+      ORDER BY ${order} LIMIT ${q.limit} OFFSET ${q.offset}`);
+    const facet = async (col: string) =>
+      (
+        await db.execute<{ value: string; count: number }>(
+          sql`SELECT ${sql.raw(col)}::text AS value, count(*)::int AS count FROM students WHERE deleted_at IS NULL AND ${sql.raw(col)} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 200`,
+        )
+      ).rows;
+    const [status, faculty, major, degree, entryYear] = await Promise.all(['status', 'faculty', 'major', 'degree', 'entry_year'].map(facet));
     return {
       total: Number(r.rows[0]?.total ?? 0),
       students: r.rows.map((x) => ({
@@ -338,8 +366,11 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
         nationalIdMasked: `******${x.national_id_last4}`,
         lastLoginAt: iso(x.last_login_at as Date),
         balanceRial: n(x.balance_rial as bigint),
+        reservations: x.reservations,
+        addedAt: iso(x.created_at as Date),
+        removedAt: x.status === 'Removed' ? iso(x.updated_at as Date) : null,
       })),
-      facets: { byStatus: agg(facets.rows, 'status'), byFaculty: agg(facets.rows, 'faculty') },
+      facets: { status: status!, faculty: faculty!, major: major!, degree: degree!, entryYear: entryYear!, byStatus: status!, byFaculty: faculty! },
     };
   });
 
@@ -696,14 +727,6 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
   });
 }
 
-function agg(rows: { c: number; [k: string]: unknown }[], key: string) {
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const k = String(r[key] ?? '—');
-    m.set(k, (m.get(k) ?? 0) + r.c);
-  }
-  return [...m].map(([value, count]) => ({ value, count }));
-}
 export const csvCell = (v: string) => {
   const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

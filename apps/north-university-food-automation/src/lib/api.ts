@@ -121,12 +121,20 @@ export const importPreview = async (i: { file: File; policy: string; fullSync: b
 };
 // notifications / settings / staff / reports / reservations
 export const notificationsAdmin = (i?: In) => (i?.send ? request('POST', '/notifications', i.send) : request('GET', '/notifications'));
-export const settingsManage = (i?: In) => (i?.values ? request('PUT', '/settings', { values: i.values }) : request('GET', '/settings'));
+export const settingsManage = (i?: In) => (i?.values ? request('PUT', '/settings', { values: i.values, mealSlots: i.mealSlots }) : request('GET', '/settings'));
 export const staffList = ep('GET', '/staff');
 export const staffSave = ep('PUT', '/staff');
-export const reportsSummary = ep('GET', '/reports/summary');
+export const reportsSummary = async (i?: In) => {
+  const r = await request('GET', '/reports/summary', i);
+  return { ...r, rows: (r.rows as { offeringId: string; mealType: string }[]).map((x) => ({ ...x, id: x.offeringId, meal: x.mealType })) };
+};
 export const reportsAdvanced = ep('GET', '/reports/advanced');
-export const reservationsAdminList = ep('GET', '/reservations');
+export const reservationsAdminList = async (i?: In) => {
+  const q: In = { limit: 100, ...(i ?? {}) };
+  const r = await request('GET', '/reservations', q);
+  const list = r.reservations as { priceRial: number }[];
+  return { ...r, reservations: list.map((x) => ({ ...x, priceAtBooking: x.priceRial })), hasMore: Number(q.offset ?? 0) + list.length < r.total };
+};
 // student self-service
 export const studentMenu = ep('GET', '/me/menu');
 export const studentNotifications = ep('GET', '/me/notifications');

@@ -84,17 +84,25 @@ export function reportRoutes(app: FastifyInstance, db: Db) {
     const p = requirePrincipal(req);
     const w = scope(req, f);
     const base = sql`FROM reservations r JOIN meal_offerings o ON o.id=r.offering_id JOIN meal_slots ms ON ms.id=o.meal_slot_id JOIN foods fd ON fd.id=o.food_id JOIN cafeterias c ON c.id=o.cafeteria_id JOIN accounts a ON a.id=r.account_id LEFT JOIN students s ON s.id=a.student_id WHERE ${w}`;
-    const agg = sql`count(*) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow')) AS reserved, count(*) FILTER (WHERE r.status='Delivered') AS delivered, count(*) FILTER (WHERE r.status='Cancelled') AS cancelled, count(*) FILTER (WHERE r.status='NoShow') AS no_show, COALESCE(sum(r.price_rial) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow')),0) AS value`;
-    const [daily, meals, foods, faculty, groups] = await Promise.all([
+    const agg = sql`count(*) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow')) AS reserved, count(*) FILTER (WHERE r.status='Delivered') AS delivered, count(*) FILTER (WHERE r.status='Cancelled') AS cancelled, count(*) FILTER (WHERE r.status='NoShow') AS no_show, COALESCE(sum(r.price_rial) FILTER (WHERE r.status IN ('Reserved','Delivered','NoShow')),0) AS value, count(DISTINCT r.account_id) AS customers`;
+    const [daily, meals, foods, faculty, groups, major, stu, offs] = await Promise.all([
       db.execute<Record<string, unknown>>(sql`SELECT o.service_date::text AS k, ${agg} ${base} GROUP BY 1 ORDER BY 1`),
       db.execute<Record<string, unknown>>(sql`SELECT ms.code AS k, ${agg} ${base} GROUP BY 1 ORDER BY 1`),
       db.execute<Record<string, unknown>>(sql`SELECT fd.name AS k, ${agg} ${base} GROUP BY 1 ORDER BY 2 DESC LIMIT 20`),
       db.execute<Record<string, unknown>>(sql`SELECT COALESCE(s.faculty, 'کارکنان') AS k, ${agg} ${base} GROUP BY 1 ORDER BY 2 DESC LIMIT 30`),
       db.execute<Record<string, unknown>>(sql`SELECT r.customer_group::text AS k, ${agg} ${base} GROUP BY 1`),
+      db.execute<Record<string, unknown>>(sql`SELECT COALESCE(s.major, 'کارکنان') AS k, ${agg} ${base} GROUP BY 1 ORDER BY 2 DESC LIMIT 30`),
+      db.execute<Record<string, unknown>>(
+        sql`SELECT count(*) FILTER (WHERE deleted_at IS NULL) AS total, count(*) FILTER (WHERE deleted_at IS NULL AND status='Active') AS active,
+          count(*) FILTER (WHERE deleted_at IS NULL AND status IN ('OnLeave','Withdrawn','Graduated')) AS inactive, count(*) FILTER (WHERE deleted_at IS NULL AND status='Removed') AS removed,
+          (SELECT count(DISTINCT s.id) ${base} AND s.id IS NOT NULL) AS engaged FROM students`,
+      ),
+      db.execute<{ c: bigint }>(sql`SELECT count(*) AS c FROM meal_offerings o WHERE o.service_date BETWEEN ${f.from}::date AND ${f.to}::date AND o.status <> 'Cancelled'`),
     ]);
     const grp = (rows: Record<string, unknown>[]) =>
       rows.map((x) => ({
         key: String(x.k),
+        students: n(x.customers as bigint),
         reserved: n(x.reserved as bigint),
         delivered: n(x.delivered as bigint),
         cancelled: n(x.cancelled as bigint),
@@ -107,22 +115,29 @@ export function reportRoutes(app: FastifyInstance, db: Db) {
       foods: grp(foods.rows),
       faculty: grp(faculty.rows),
       customerGroups: grp(groups.rows),
+      major: grp(major.rows),
+      students: Object.fromEntries(Object.entries(stu.rows[0]!).map(([k, v]) => [k, n(v as bigint)])),
+      offerings: n(offs.rows[0]?.c),
     };
     out.waste = grp(foods.rows)
       .filter((x) => x.noShow > 0)
       .map((x) => ({ food: x.key, noShow: x.noShow, wasteRial: x.reserved ? Math.round((x.valueRial / x.reserved) * x.noShow) : 0 }));
     if (hasPermission(p.role, 'reportsFinance')) {
-      const [ledger, sys, pay, recon] = await Promise.all([
+      const [ledger, sys, pay, recon, ledgerDaily] = await Promise.all([
         db.execute<Record<string, unknown>>(
           sql`SELECT t.type AS k, count(DISTINCT t.id) AS c, COALESCE(sum(e.amount_rial) FILTER (WHERE a.kind='Customer'),0) AS amount FROM ledger_transactions t JOIN ledger_entries e ON e.transaction_id=t.id JOIN accounts a ON a.id=e.account_id WHERE (t.created_at AT TIME ZONE 'Asia/Tehran')::date BETWEEN ${f.from}::date AND ${f.to}::date GROUP BY 1 ORDER BY 1`,
         ),
         db.execute<Record<string, unknown>>(sql`SELECT code, balance_rial FROM accounts WHERE kind='System' ORDER BY code`),
         db.execute<Record<string, unknown>>(sql`SELECT status::text AS k, count(*) AS c, COALESCE(sum(amount_rial),0) AS amount FROM payments GROUP BY 1`),
         db.execute<Record<string, unknown>>(sql`SELECT started_at, ok, detail FROM job_runs WHERE job='reconcile-ledger' ORDER BY started_at DESC LIMIT 1`),
+        db.execute<Record<string, unknown>>(
+          sql`SELECT (e.created_at AT TIME ZONE 'Asia/Tehran')::date::text AS d, COALESCE(sum(e.amount_rial) FILTER (WHERE e.amount_rial > 0),0) AS in_rial, COALESCE(-sum(e.amount_rial) FILTER (WHERE e.amount_rial < 0),0) AS out_rial
+            FROM ledger_entries e JOIN accounts a ON a.id=e.account_id WHERE a.kind='Customer' AND (e.created_at AT TIME ZONE 'Asia/Tehran')::date BETWEEN ${f.from}::date AND ${f.to}::date GROUP BY 1 ORDER BY 1`,
+        ),
       ]);
       const offline = await db.execute<{ c: bigint }>(sql`SELECT count(*) AS c FROM deliveries WHERE outcome='OfflineConflict'`);
       const w2 = await db.execute<Record<string, unknown>>(
-        sql`SELECT count(*) AS accounts, COALESCE(sum(balance_rial),0) AS total, count(*) FILTER (WHERE balance_rial>0) AS positive, COALESCE(max(balance_rial),0) AS max FROM accounts WHERE kind='Customer'`,
+        sql`SELECT count(*) AS accounts, COALESCE(sum(balance_rial),0) AS total, count(*) FILTER (WHERE balance_rial>0) AS positive, count(*) FILTER (WHERE balance_rial<0) AS negative, COALESCE(max(balance_rial),0) AS max FROM accounts WHERE kind='Customer'`,
       );
       out.ledger = ledger.rows.map((x) => ({ type: String(x.k), count: n(x.c as bigint), amountRial: n(x.amount as bigint) }));
       out.systemAccounts = sys.rows.map((x) => ({ code: String(x.code), balanceRial: n(x.balance_rial as bigint) }));
@@ -130,7 +145,15 @@ export function reportRoutes(app: FastifyInstance, db: Db) {
       out.lastReconcile = recon.rows[0] ? { at: String(recon.rows[0].started_at), ok: !!recon.rows[0].ok, detail: recon.rows[0].detail } : null;
       out.offlineConflicts = n(offline.rows[0]?.c);
       const wr = w2.rows[0]!;
-      out.wallets = { accounts: n(wr.accounts as bigint), totalRial: n(wr.total as bigint), positive: n(wr.positive as bigint), maxRial: n(wr.max as bigint) };
+      out.wallets = {
+        accounts: n(wr.accounts as bigint),
+        students: n(wr.accounts as bigint),
+        totalRial: n(wr.total as bigint),
+        positive: n(wr.positive as bigint),
+        negative: n(wr.negative as bigint),
+        maxRial: n(wr.max as bigint),
+      };
+      out.ledgerDaily = ledgerDaily.rows.map((x) => ({ date: String(x.d), inRial: n(x.in_rial as bigint), outRial: n(x.out_rial as bigint) }));
     }
     return out;
   });

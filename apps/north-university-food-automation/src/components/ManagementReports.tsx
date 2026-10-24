@@ -11,9 +11,9 @@ type G = { key: string; students: number; reserved: number; delivered: number; c
 type Data = {
   daily: { date: string; reserved: number; delivered: number; cancelled: number; noShow: number; valueRial: number }[];
   meals: G[]; foods: G[]; faculty: G[]; major: G[];
-  ledger: { type: string; count: number; amountRial: number }[];
-  ledgerDaily: { date: string; inRial: number; outRial: number }[];
-  wallets: { students: number; totalRial: number; positive: number; negative: number; maxRial: number };
+  ledger?: { type: string; count: number; amountRial: number }[];
+  ledgerDaily?: { date: string; inRial: number; outRial: number }[];
+  wallets?: { students: number; totalRial: number; positive: number; negative: number; maxRial: number };
   students: { total: number; active: number; inactive: number; removed: number; engaged: number };
   offerings: number;
 };
@@ -40,11 +40,12 @@ export default function ManagementReports({ from, to }: { from: string; to: stri
   if (loading) return <LoadingBlock rows={6} />;
   if (error || !data) return <ErrorState message={error ?? ''} onRetry={reload} />;
   const tot = data.daily.reduce((a, d) => ({ reserved: a.reserved + d.reserved, delivered: a.delivered + d.delivered, cancelled: a.cancelled + d.cancelled, noShow: a.noShow + d.noShow, value: a.value + d.valueRial }), { reserved: 0, delivered: 0, cancelled: 0, noShow: 0, value: 0 });
-  const credits = data.ledger.filter((l) => l.amountRial > 0).reduce((a, l) => a + l.amountRial, 0);
-  const debits = -data.ledger.filter((l) => l.amountRial < 0).reduce((a, l) => a + l.amountRial, 0);
+  const ledger = data.ledger ?? [];
+  const credits = ledger.filter((l) => l.amountRial > 0).reduce((a, l) => a + l.amountRial, 0);
+  const debits = -ledger.filter((l) => l.amountRial < 0).reduce((a, l) => a + l.amountRial, 0);
   const exportAll = () => downloadCsv(`management-${from}-${to}.csv`, ['بخش', 'عنوان', 'مقدار ۱', 'مقدار ۲', 'مقدار ۳', 'مبلغ (ریال)'], [
     ...data.daily.map((d) => ['روزانه', d.date, d.reserved, d.delivered, d.noShow, d.valueRial]),
-    ...data.ledger.map((l) => ['مالی', LEDGER_TYPES[l.type] ?? l.type, l.count, '', '', l.amountRial]),
+    ...ledger.map((l) => ['مالی', LEDGER_TYPES[l.type] ?? l.type, l.count, '', '', l.amountRial]),
     ...data.faculty.map((g) => ['دانشکده', g.key, g.students, g.reserved, g.delivered, g.valueRial]),
     ...data.major.map((g) => ['رشته', g.key, g.students, g.reserved, g.delivered, g.valueRial]),
     ...data.foods.map((g) => ['غذا', g.key, g.reserved, g.delivered, g.cancelled, g.valueRial]),
@@ -60,7 +61,7 @@ export default function ManagementReports({ from, to }: { from: string; to: stri
         <StatCard label="دانشجویان فعال در بازه" value={faNum(data.students.engaged)} hint={`از ${faNum(data.students.active)} دانشجوی فعال · ${pct(data.students.engaged, data.students.active)}`} />
         <StatCard label="واریز به کیف پول‌ها" value={rial(credits)} />
         <StatCard label="برداشت از کیف پول‌ها" value={rial(debits)} />
-        <StatCard label="مانده‌ی کل کیف پول‌ها" value={rial(data.wallets.totalRial)} hint={`${faNum(data.wallets.positive)} دارای موجودی · ${faNum(data.wallets.negative)} منفی`} />
+        {data.wallets && <StatCard label="مانده‌ی کل کیف پول‌ها" value={rial(data.wallets.totalRial)} hint={`${faNum(data.wallets.positive)} دارای موجودی · ${faNum(data.wallets.negative)} منفی`} />}
         <StatCard label="وضعیت دانشجویان" value={faNum(data.students.total)} hint={`فعال ${faNum(data.students.active)} · غیرفعال ${faNum(data.students.inactive)} · حذف ${faNum(data.students.removed)}`} />
       </div>
 
@@ -76,10 +77,10 @@ export default function ManagementReports({ from, to }: { from: string; to: stri
         </div>
       </Section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {data.ledgerDaily && <div className="grid gap-6 lg:grid-cols-2">
         <Section title="گردش مالی روزانه (ریال)">
           <div className="h-60 w-full" dir="ltr">
-            <ResponsiveContainer><BarChart data={data.ledgerDaily.map((d) => ({ ...d, label: faShort(d.date) }))} margin={{ left: 0, right: 8 }}>
+            <ResponsiveContainer><BarChart data={(data.ledgerDaily ?? []).map((d) => ({ ...d, label: faShort(d.date) }))} margin={{ left: 0, right: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" /><XAxis dataKey="label" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 10 }} tickFormatter={short} width={56} />
               <Tooltip {...tip} formatter={(v: number) => rial(v)} /><Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="inRial" name="واریز" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} /><Bar dataKey="outRial" name="برداشت" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
@@ -87,14 +88,14 @@ export default function ManagementReports({ from, to }: { from: string; to: stri
           </div>
         </Section>
         <Section title="تفکیک تراکنش‌های مالی">
-          {!data.ledger.length ? <p className="py-6 text-center text-sm text-muted-foreground">تراکنشی در این بازه نیست</p> : (
+          {!ledger.length ? <p className="py-6 text-center text-sm text-muted-foreground">تراکنشی در این بازه نیست</p> : (
             <Table><TableHeader><TableRow><TableHead className="text-right">نوع</TableHead><TableHead className="text-right">تعداد</TableHead><TableHead className="text-right">جمع مبلغ</TableHead></TableRow></TableHeader>
-              <TableBody>{data.ledger.map((l) => <TableRow key={l.type}><TableCell>{LEDGER_TYPES[l.type] ?? l.type}</TableCell><TableCell className="num">{faNum(l.count)}</TableCell><TableCell className={`num whitespace-nowrap ${l.amountRial < 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>{rial(l.amountRial)}</TableCell></TableRow>)}
+              <TableBody>{ledger.map((l) => <TableRow key={l.type}><TableCell>{LEDGER_TYPES[l.type] ?? l.type}</TableCell><TableCell className="num">{faNum(l.count)}</TableCell><TableCell className={`num whitespace-nowrap ${l.amountRial < 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>{rial(l.amountRial)}</TableCell></TableRow>)}
                 <TableRow className="font-semibold"><TableCell>خالص</TableCell><TableCell /><TableCell className="num whitespace-nowrap">{rial(credits - debits)}</TableCell></TableRow></TableBody>
             </Table>
           )}
         </Section>
-      </div>
+      </div>}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <GroupTable title="مصرف به تفکیک دانشکده" rows={data.faculty} file="by-faculty.csv" showStudents />

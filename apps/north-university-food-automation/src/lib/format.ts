@@ -30,7 +30,7 @@ export const RES_STATUS: Record<string, { label: string; tone: Tone }> = {
   Reserved: { label: 'رزرو شده', tone: 'info' },
   Delivered: { label: 'تحویل شده', tone: 'success' },
   Cancelled: { label: 'لغو شده', tone: 'muted' },
-  Expired: { label: 'منقضی / عدم مراجعه', tone: 'warning' },
+  NoShow: { label: 'عدم مراجعه', tone: 'warning' },
   Rejected: { label: 'رد شده', tone: 'danger' },
 };
 export const LEDGER_TYPES: Record<string, string> = {

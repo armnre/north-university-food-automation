@@ -75,6 +75,12 @@ export const deliveryStats = ep('GET', '/delivery/stats');
 // finance
 export const financeAdjust = ep('POST', '/finance/adjust');
 export const financeLedger = ep('GET', '/finance/ledger');
+export const paymentsNeedsReview = ep('GET', '/payments/needs-review');
+export const paymentResolve = ep('POST', '/payments/:id/resolve');
+export const paymentsReconcile = ep('POST', '/payments/reconcile');
+export const employeesList = ep('GET', '/employees');
+export const employeeSave = ep('PUT', '/employees');
+export const employeesBulk = ep('POST', '/employees/bulk');
 // imports — preview uploads the real .xlsx; the server parses and validates it
 export const importList = ep('GET', '/imports');
 export const importCancel = (i: In) => request('POST', '/imports/:batchId/cancel', i);

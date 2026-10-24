@@ -38,7 +38,7 @@ function FacetSelect({ label, value, facets, onChange, fmt }: { label: string; v
 
 export default function StudentsPage() {
   const { token, me } = useSession();
-  const canEdit = me?.kind === 'staff' && me.staff.perms.includes('students');
+  const canEdit = me?.kind === 'staff' && me.staff.perms.includes('studentsWrite');
   const [q, setQ] = useState('');
   const [dq] = useDebounce(q, 350);
   const [f, setF] = useState<Filters>({});

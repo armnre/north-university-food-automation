@@ -12,13 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@project/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@project/components/ui/table';
 import { cn } from '@project/components/lib/utils';
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, Section, StatCard } from '../../components/ui-kit';
+import { EmptyState, ErrorState, LoadingBlock, PageHeader, Section } from '../../components/ui-kit';
 import { LEDGER_TYPES, downloadCsv, errMsg, faDateTime, faDigits, faNum, newKey, rial } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
 
-type Entry = { id: string; trackingCode: string; type: string; amountRial: number; counterAccount: string; reason: string; createdAt: string; studentNumber: string; studentName: string; actor: string | null; reservationCode: string | null };
-type Data = { entries: Entry[]; totals: { type: string; count: number; total: number }[]; mismatches: { code: string; status: string; priceAtBooking: number; net: number }[]; hasMore: boolean };
+type Entry = { id: string; trackingCode: string; type: string; amountRial: number; balanceAfter: number; reason: string; createdAt: string; studentNumber: string | null; owner: string; actor: string | null };
+type Data = { entries: Entry[]; hasMore: boolean; reconciliation: { healthy: boolean; unbalanced: number; drift: number } };
 const ALL = '__all__';
 
 export default function FinancePage() {
@@ -33,7 +33,7 @@ export default function FinancePage() {
   const { data, error, loading, reload } = useLoad(async (t) => (await financeLedger({ token: t, type: type === ALL ? undefined : type, search: dq || undefined, from: from || undefined, to: to || undefined, offset: page * 100 })) as Data, [type, dq, from, to, page]);
   const [open, setOpen] = useState(false);
 
-  const exportCsv = () => data && downloadCsv('ledger.csv', ['شناسه پیگیری', 'زمان', 'نوع', 'مبلغ (ریال)', 'شماره دانشجویی', 'رزرو', 'کاربر مسئول', 'شرح'], data.entries.map((e) => [e.trackingCode, e.createdAt, LEDGER_TYPES[e.type] ?? e.type, e.amountRial, e.studentNumber, e.reservationCode ?? '', e.actor ?? '', e.reason]));
+  const exportCsv = () => data && downloadCsv('ledger.csv', ['شناسه پیگیری', 'زمان', 'نوع', 'مبلغ (ریال)', 'مانده پس از تراکنش', 'شماره دانشجویی', 'صاحب حساب', 'کاربر مسئول', 'شرح'], data.entries.map((e) => [e.trackingCode, e.createdAt, LEDGER_TYPES[e.type] ?? e.type, e.amountRial, e.balanceAfter, e.studentNumber ?? '', e.owner, e.actor ?? '', e.reason]));
   return (
     <>
       <PageHeader title="امور مالی" subtitle="دفترکل فقط‌افزودنی است؛ هیچ تراکنشی حذف یا ویرایش نمی‌شود. اصلاح فقط با تراکنش جبرانی." actions={<>
@@ -41,16 +41,10 @@ export default function FinancePage() {
         {canWrite && <Button onClick={() => setOpen(true)}><Plus className="ms-1 h-4 w-4" />شارژ / برداشت دستی</Button>}
       </>} />
       {data && (
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          {Object.keys(LEDGER_TYPES).map((k) => { const t = data.totals.find((x) => x.type === k); return <StatCard key={k} label={LEDGER_TYPES[k]} value={rial(Math.abs(t?.total ?? 0))} hint={`${faNum(t?.count ?? 0)} تراکنش`} />; })}
-        </div>
-      )}
-      {data && (
-        <div className={cn('mb-6 flex items-start gap-3 rounded-xl border p-4 text-sm', data.mismatches.length ? 'border-destructive/40 bg-destructive/5' : 'border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.06)]')}>
-          {data.mismatches.length ? <AlertTriangle className="h-5 w-5 text-destructive" /> : <CheckCircle2 className="h-5 w-5 text-[hsl(var(--success))]" />}
+        <div className={cn('mb-6 flex items-start gap-3 rounded-xl border p-4 text-sm', !data.reconciliation.healthy ? 'border-destructive/40 bg-destructive/5' : 'border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.06)]')}>
+          {!data.reconciliation.healthy ? <AlertTriangle className="h-5 w-5 text-destructive" /> : <CheckCircle2 className="h-5 w-5 text-[hsl(var(--success))]" />}
           <div>
-            <div className="font-semibold">{data.mismatches.length ? `${faNum(data.mismatches.length)} مغایرت بین رزروها و دفترکل یافت شد` : 'تطبیق رزروها با دفترکل: بدون مغایرت'}</div>
-            {data.mismatches.length > 0 && <ul className="mt-2 space-y-1">{data.mismatches.map((m) => <li key={m.code} className="num">رزرو <span dir="ltr" className="font-mono">{m.code}</span> · قیمت {rial(m.priceAtBooking)} · خالص دفترکل {rial(m.net)}</li>)}</ul>}
+            <div className="font-semibold">{data.reconciliation.healthy ? 'تطبیق دفترکل: همه‌ی تراکنش‌ها متوازن و موجودی حساب‌ها با دفترکل برابر است' : `مغایرت در دفترکل: ${faNum(data.reconciliation.unbalanced)} تراکنش ناموازن، ${faNum(data.reconciliation.drift)} حساب با موجودی ناهمخوان`}</div>
           </div>
         </div>
       )}
@@ -63,13 +57,13 @@ export default function FinancePage() {
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.entries.length ? <EmptyState title="تراکنشی یافت نشد" /> : (
         <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>
-            <TableHeader><TableRow><TableHead className="text-right">شناسه</TableHead><TableHead className="text-right">زمان</TableHead><TableHead className="text-right">نوع</TableHead><TableHead className="text-right">دانشجو</TableHead><TableHead className="text-right">مبلغ</TableHead><TableHead className="hidden text-right lg:table-cell">شرح / مسئول</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead className="text-right">شناسه</TableHead><TableHead className="text-right">زمان</TableHead><TableHead className="text-right">نوع</TableHead><TableHead className="text-right">صاحب حساب</TableHead><TableHead className="text-right">مبلغ</TableHead><TableHead className="hidden text-right lg:table-cell">شرح / مسئول</TableHead></TableRow></TableHeader>
             <TableBody>
               {data.entries.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="font-mono text-xs" dir="ltr">{e.trackingCode}</TableCell><TableCell className="whitespace-nowrap text-xs">{faDateTime(e.createdAt)}</TableCell>
-                  <TableCell>{LEDGER_TYPES[e.type] ?? e.type}{e.reservationCode && <div className="font-mono text-[11px] text-muted-foreground" dir="ltr">{e.reservationCode}</div>}</TableCell>
-                  <TableCell><div className="num">{faDigits(e.studentNumber)}</div><div className="text-xs text-muted-foreground">{e.studentName}</div></TableCell>
+                  <TableCell>{LEDGER_TYPES[e.type] ?? e.type}</TableCell>
+                  <TableCell><div className="num">{e.studentNumber ? faDigits(e.studentNumber) : '—'}</div><div className="text-xs text-muted-foreground">{e.owner}</div></TableCell>
                   <TableCell className={cn('num whitespace-nowrap font-semibold', e.amountRial >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive')} dir="ltr">{e.amountRial >= 0 ? '+' : '−'}{rial(Math.abs(e.amountRial))}</TableCell>
                   <TableCell className="hidden max-w-xs text-xs text-muted-foreground lg:table-cell">{e.reason}{e.actor && <div>توسط: {e.actor}</div>}</TableCell>
                 </TableRow>
@@ -94,7 +88,7 @@ function AdjustDialog({ open, onClose, onDone, token }: { open: boolean; onClose
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await financeAdjust({ token, studentNumber: f.studentNumber, direction: f.direction, amountRial: Number(f.amount), reason: f.reason, idempotencyKey: key.current });
+      const r = await financeAdjust({ token, studentNumber: f.studentNumber, amountRial: f.direction === 'credit' ? Number(f.amount) : -Number(f.amount), kind: 'MANUAL_CASH', reason: f.reason, idempotencyKey: key.current });
       toast.success(`ثبت شد. شناسه پیگیری ${r.trackingCode} · موجودی جدید ${rial(r.balanceRial)}`); close(); onDone();
     } catch (e) { toast.error(errMsg(e)); setStage('form'); } finally { setBusy(false); }
   };

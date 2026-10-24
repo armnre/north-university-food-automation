@@ -732,8 +732,7 @@ export const csvCell = (v: string) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 
   // ── background jobs: last run of each job (SuperAdmin) ────────────────
-  app.get('/api/v1/admin/jobs', async (req) => {
-    if (staffRole(req) !== 'SuperAdmin') fail('FORBIDDEN', 'شما به این بخش دسترسی ندارید.');
+  app.get('/api/v1/admin/jobs', { config: { access: 'settingsWrite' } }, async () => {
     const r = await db.execute<Record<string, unknown>>(sql`
       SELECT DISTINCT ON (job) job, started_at, finished_at, ok, detail,
         (SELECT count(*)::int FROM job_runs j2 WHERE j2.job=j.job AND j2.ok=false AND j2.started_at > now() - interval '24 hours') AS failures_24h

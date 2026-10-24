@@ -1,9 +1,0 @@
-[Unit]
-Description=Periodic Health Check for Food Automation Services
-
-[Timer]
-OnCalendar=*:0/2
-AccuracySec=15s
-
-[Install]
-WantedBy=timers.target

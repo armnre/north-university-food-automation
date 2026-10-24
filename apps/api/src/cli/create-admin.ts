@@ -1,88 +1,42 @@
-#!/usr/bin/env tsx
 import { createInterface } from 'node:readline/promises';
-import process from 'node:process';
-import { STAFF_ROLES, type StaffRole } from '@food/shared';
-import { getEnv, readEnv } from '../config/env.js';
+import { stdin, stdout } from 'node:process';
+import { eq, sql } from 'drizzle-orm';
 import { createDb, createPool } from '../db/client.js';
-import { createStaffFromCli } from '../services/staff.service.js';
-import { randomCode } from '../lib/crypto.js';
-import { createSilentLogger } from '../lib/logger.js';
+import { auditLogs, staffUsers } from '../db/schema.js';
+import { hashPassword, passwordPolicyError } from '../lib/password.js';
 
-/**
- * `npm run create-admin -- --username admin --fullname "مدیر ارشد" --role SuperAdmin`
- *
- * ساخت حساب کارکنان از خط فرمان — تنها مسیر مجاز برای ساخت `SuperAdmin`
- * (در API ساخت نقش هم‌سطح ممنوع است تا ارتقای دسترسی ممکن نباشد).
- *
- * اگر رمز داده نشود، یک رمز تصادفی قوی تولید و **یک بار** چاپ می‌شود.
- */
-type Args = { username?: string; fullName?: string; role?: StaffRole; password?: string; cafeteriaId?: string; contractorId?: string };
-
-function parseArgs(argv: string[]): Args {
-  const out: Args = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (key === '--username') out.username = value;
-    else if (key === '--fullname' || key === '--full-name') out.fullName = value;
-    else if (key === '--role') out.role = value as StaffRole;
-    else if (key === '--password') out.password = value;
-    else if (key === '--cafeteria-id') out.cafeteriaId = value;
-    else if (key === '--contractor-id') out.contractorId = value;
-  }
-  return out;
+/** Creates the first SuperAdmin. Refuses if one exists. Password is read interactively, never from argv. */
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.error('DATABASE_URL is required');
+  process.exit(2);
 }
-
-const args = parseArgs(process.argv.slice(2));
-const readline = createInterface({ input: process.stdin, output: process.stdout });
-
-const ask = async (question: string, fallback?: string): Promise<string> => {
-  const answer = (await readline.question(fallback ? `${question} [${fallback}]: ` : `${question}: `)).trim();
-  return answer || fallback || '';
-};
-
-try {
-  const envCheck = readEnv();
-  if (!envCheck.ok) {
-    console.error(`پیکربندی محیط نامعتبر است:\n- ${envCheck.issues.join('\n- ')}`);
-    process.exit(1);
-  }
-  const env = getEnv();
-
-  const username = args.username ?? (await ask('نام کاربری'));
-  const fullName = args.fullName ?? (await ask('نام و نام خانوادگی'));
-  const roleText = args.role ?? ((await ask('نقش', 'SuperAdmin')) as StaffRole);
-  if (!STAFF_ROLES.includes(roleText)) {
-    console.error(`نقش نامعتبر. نقش‌های مجاز: ${STAFF_ROLES.join(', ')}`);
-    process.exit(1);
-  }
-
-  const generatedPassword = `${randomCode(6)}-${randomCode(6)}-${randomCode(4)}`;
-  const password = args.password ?? (await ask('رمز عبور (خالی ⇒ رمز تصادفی تولید می‌شود)')) ?? '';
-  const finalPassword = password || generatedPassword;
-
-  const pool = createPool(env.DATABASE_URL, 1, 'food-cli');
-  const db = createDb(pool);
-  const deps = { db, env, log: createSilentLogger('cli') };
-
-  const created = await createStaffFromCli(deps, {
-    username,
-    fullName,
-    role: roleText,
-    password: finalPassword,
-    cafeteriaId: args.cafeteriaId ?? null,
-    contractorId: args.contractorId ?? null,
-  });
-
-  console.log(`حساب ساخته شد: id=${created.id} username=${username} role=${roleText}`);
-  if (!password) {
-    console.log(`رمز تصادفی (فقط یک بار نمایش داده می‌شود): ${generatedPassword}`);
-  }
-  console.log('در اولین ورود، تغییر رمز اجباری است.');
+const pool = createPool(url, 1);
+const db = createDb(pool);
+const [{ n } = { n: 0 }] = await db
+  .select({ n: sql<number>`count(*)::int` })
+  .from(staffUsers)
+  .where(eq(staffUsers.role, 'SuperAdmin'));
+if (n > 0) {
+  console.error('A SuperAdmin already exists; refusing.');
   await pool.end();
-} catch (error) {
-  console.error('ساخت حساب ناموفق بود:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-} finally {
-  readline.close();
+  process.exit(1);
 }
+const rl = createInterface({ input: stdin, output: stdout });
+const username = (await rl.question('username: ')).trim();
+const fullName = (await rl.question('full name: ')).trim();
+const password = process.env.ADMIN_PASSWORD ?? (await rl.question('password (min 10 chars): '));
+rl.close();
+const err = passwordPolicyError(password);
+if (!username || !fullName || err) {
+  console.error(err ?? 'username and full name are required');
+  await pool.end();
+  process.exit(1);
+}
+const [u] = await db
+  .insert(staffUsers)
+  .values({ username, fullName, role: 'SuperAdmin', passwordHash: await hashPassword(password), mustChangePassword: true })
+  .returning({ id: staffUsers.id });
+await db.insert(auditLogs).values({ actor: 'cli', action: 'staff.create-admin', entityType: 'StaffUser', entityId: u!.id });
+await pool.end();
+console.log('SuperAdmin created; password change is required at first login.');

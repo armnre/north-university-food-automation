@@ -1,198 +1,109 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import { randomUUID } from 'node:crypto';
+import { ZodError } from 'zod';
+import type pg from 'pg';
+import type { Db } from './db/client.js';
+import type { Env } from './env.js';
+import { registerAuth } from './lib/auth.js';
+import { AppError } from './lib/errors.js';
+import { getClientIp } from './lib/ip.js';
+import { authRoutes } from './routes/auth.js';
+import { systemRoutes } from './routes/system.js';
+import { meRoutes } from './routes/me.js';
+import { catalogRoutes } from './routes/catalog.js';
+import { offeringRoutes } from './routes/offerings.js';
+import { deliveryRoutes } from './routes/delivery.js';
+import { adminRoutes } from './routes/admin.js';
+import { paymentRoutes } from './routes/payments.js';
+import { importRoutes } from './routes/imports.js';
 import multipart from '@fastify/multipart';
-import fastifyStatic from '@fastify/static';
-import swagger from '@fastify/swagger';
-import swaggerUi from '@fastify/swagger-ui';
-import Fastify, {
-  type FastifyBaseLogger,
-  type FastifyInstance,
-  type RawRequestDefaultExpression,
-  type RawReplyDefaultExpression,
-  type RawServerDefault,
-} from 'fastify';
-import { jsonSchemaTransform, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Logger } from 'pino';
-import { createDb, createPool, type Db } from './db/client.js';
-import { getEnv, type AppEnv } from './config/env.js';
-import { createLogger, createSilentLogger } from './lib/logger.js';
-import { registerErrorHandler } from './plugins/error-handler.js';
-import { registerSecurity } from './plugins/security.js';
-import { registerAuth } from './plugins/auth.js';
-import { authRoutes } from './routes/auth.routes.js';
-import { healthRoutes } from './routes/health.routes.js';
-import { adminRoutes } from './routes/admin.routes.js';
-import { catalogRoutes } from './routes/catalog.routes.js';
-import { deliveryRoutes } from './routes/delivery.routes.js';
-import { employeeRoutes } from './routes/employee.routes.js';
-import { financeRoutes } from './routes/finance.routes.js';
-import { importRoutes } from './routes/import.routes.js';
-import { meRoutes } from './routes/me.routes.js';
-import { notificationRoutes } from './routes/notification.routes.js';
-import { offeringRoutes } from './routes/offering.routes.js';
-import { paymentRoutes } from './routes/payment.routes.js';
-import { reportRoutes } from './routes/report.routes.js';
-import { reservationRoutes } from './routes/reservation.routes.js';
-import { settingsRoutes } from './routes/settings.routes.js';
-import { staffRoutes } from './routes/staff.routes.js';
-import { registerUploadedFilesRoute, uploadRoutes } from './routes/upload.routes.js';
-import type { ServiceDeps } from './types.js';
+import { reportRoutes } from './routes/reports.js';
+import { uploadRoutes } from './routes/uploads.js';
+import { gatewayFromEnv, type PaymentGateway } from './services/gateway.js';
 
-export type BuildAppOptions = {
-  env?: AppEnv;
-  db?: Db;
-  logger?: Logger;
-};
+export type AppDeps = { env: Env; db: Db; pool: pg.Pool; gateway?: PaymentGateway | null };
 
-export type AppInstance = FastifyInstance<
-  RawServerDefault,
-  RawRequestDefaultExpression,
-  RawReplyDefaultExpression,
-  Logger,
-  ZodTypeProvider
-> & {
-  deps: ServiceDeps;
-};
-
-/**
- * ساخت نمونهٔ Fastify.
- *
- * لایه‌بندی: `routes` → `services` (قوانین کسب‌وکار + تراکنش) → `repositories` (Drizzle).
- * منطق کسب‌وکار در route یا کامپوننت فرانت‌اند قرار نمی‌گیرد.
- */
-export async function buildApp(options: BuildAppOptions = {}): Promise<AppInstance> {
-  const env = options.env ?? getEnv();
-  const logger = options.logger ?? (env.NODE_ENV === 'test' ? createSilentLogger() : createLogger(env));
-
+export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
-    loggerInstance: logger as unknown as FastifyBaseLogger,
-    // IP کلاینت توسط `getClientIp` با `TRUSTED_PROXY_HOPS` از انتهای زنجیرهٔ
-    // X-Forwarded-For خوانده می‌شود (مقدار اول جعل‌پذیر است) ⇒ trustProxy خاموش.
-    trustProxy: false,
+    logger:
+      env.NODE_ENV === 'test'
+        ? false
+        : {
+            level: env.NODE_ENV === 'production' ? 'info' : 'debug',
+            redact: { paths: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'res.headers["set-cookie"]'], remove: true },
+          },
+    genReqId: (req) =>
+      typeof req.headers['x-request-id'] === 'string' && /^[\w-]{8,64}$/.test(req.headers['x-request-id']) ? req.headers['x-request-id'] : randomUUID(),
     bodyLimit: env.BODY_LIMIT_BYTES,
-    connectionTimeout: 20_000,
-    requestTimeout: 30_000,
-    keepAliveTimeout: 10_000,
-    disableRequestLogging: env.LOG_LEVEL !== 'debug' && env.LOG_LEVEL !== 'trace',
-    ajv: { customOptions: { removeAdditional: false, coerceTypes: false } },
-    // CORS عمداً ثبت نمی‌شود: فرانت و API هم‌دامنه سرو می‌شوند.
+    connectionTimeout: 120_000,
+    requestTimeout: 120_000,
+    trustProxy: false, // IPs are derived only via getClientIp()
   });
 
-  const db = options.db ?? createDb(createPool(env.DATABASE_URL, env.DATABASE_POOL_MAX, 'food-api'));
-  const deps: ServiceDeps = { db, env, log: logger };
-
-  app.decorate('deps', deps);
-  app.setValidatorCompiler(validatorCompiler);
-  app.setSerializerCompiler(serializerCompiler);
-
-  await app.register(cookie, {});
-  await app.register(multipart, {
-    limits: {
-      fileSize: env.BODY_LIMIT_BYTES,
-      files: 1,
-      fields: 10,
-    },
-    attachFieldsToBody: false,
-  });
-
-  const webDist = env.SERVE_STATIC ? resolve(process.cwd(), env.WEB_DIST_PATH || '../web/dist') : null;
-  const serveSpaFallback = Boolean(webDist && existsSync(webDist));
-
-  await registerSecurity(app, deps);
-  await registerErrorHandler(app, deps, { serveSpaFallback });
-  await registerAuth(app, deps);
-
-  // مستندات OpenAPI فقط در غیر production
-  if (env.NODE_ENV !== 'production') {
-    await app.register(swagger, {
-      openapi: {
-        info: {
-          title: 'سامانه اتوماسیون تغذیه دانشگاه شمال',
-          description: 'قرارداد REST همهٔ endpointها (اسکیماهای Zod همان قرارداد هستند).',
-          version: '1.0.0',
-        },
-        servers: [{ url: env.PUBLIC_BASE_URL || `http://${env.HOST}:${env.PORT}` }],
-        tags: [
-          { name: 'auth', description: 'احراز هویت، نشست و کپچا' },
-          { name: 'me', description: 'امور دانشجو/کارمند (منو، رزرو، کیف پول، برداشت)' },
-          { name: 'admin', description: 'داشبورد، دانشجویان، ممیزی' },
-          { name: 'catalog', description: 'پیمانکاران، سلف‌ها و غذاها' },
-          { name: 'offerings', description: 'منو، قیمت‌گذاری و وضعیت وعده‌ها' },
-          { name: 'reservations', description: 'مدیریت رزروها' },
-          { name: 'delivery', description: 'تحویل غذا در سلف و حالت آفلاین' },
-          { name: 'finance', description: 'دفتر کل، شارژ دستی، پرداخت و برداشت' },
-          { name: 'imports', description: 'واردسازی اکسل دانشجویان' },
-          { name: 'notifications', description: 'اعلان‌ها و صف پیامک' },
-          { name: 'reports', description: 'گزارش‌های مدیریتی و خروجی CSV/Excel' },
-          { name: 'settings', description: 'تنظیمات سامانه' },
-          { name: 'staff', description: 'مدیریت کارکنان' },
-          { name: 'employees', description: 'مدیریت کارمندان/هیئت‌علمی (مشتریان سلف)' },
-        ],
+  await app.register(cookie);
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 10 } });
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        fontSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        workerSrc: ["'self'"],
+        manifestSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'", 'https://www.zarinpal.com', 'https://sandbox.zarinpal.com'],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
       },
-      transform: jsonSchemaTransform,
-    });
-    await app.register(swaggerUi, { routePrefix: '/api/docs', uiConfig: { docExpansion: 'list' } });
-  }
+    },
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  });
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
+  });
+  await app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute', keyGenerator: (req) => getClientIp(req, env.TRUSTED_PROXY_HOPS) });
 
-  // سرو امن تصاویر آپلودشدهٔ غذا از UPLOAD_DIR زیر مسیر /uploads/:fileName
-  await registerUploadedFilesRoute(app, deps);
-
-  // سرو کردن خروجی استاتیک فرانت‌اند در استقرار یکپارچه (SERVE_STATIC=true)
-  if (env.SERVE_STATIC) {
-    if (webDist && serveSpaFallback) {
-      await app.register(fastifyStatic, {
-        root: webDist,
-        wildcard: false,
-        prefix: '/',
-        setHeaders: (res, filePath) => {
-          const target = res as unknown as {
-            setHeader?: (name: string, value: string) => void;
-            header?: (name: string, value: string) => void;
-          };
-          const applyHeader = (name: string, value: string) => {
-            if (typeof target.setHeader === 'function') target.setHeader(name, value);
-            else if (typeof target.header === 'function') target.header(name, value);
-          };
-          const normalized = filePath.replace(/\\/g, '/');
-          if (
-            normalized.endsWith('/sw.js') ||
-            normalized.endsWith('/manifest.webmanifest') ||
-            normalized.endsWith('/index.html') ||
-            normalized.endsWith('/offline.html')
-          ) {
-            applyHeader('Cache-Control', 'no-cache');
-          } else if (normalized.includes('/assets/')) {
-            applyHeader('Cache-Control', 'public, max-age=31536000, immutable');
-          }
+  app.setErrorHandler((err, req, reply) => {
+    if (err instanceof AppError)
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } });
+    if (err instanceof ZodError)
+      return reply.status(400).send({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'اطلاعات ارسالی معتبر نیست.',
+          details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
         },
       });
-    } else {
-      logger.warn({ webDist }, 'SERVE_STATIC فعال است اما پوشهٔ build فرانت‌اند یافت نشد');
-    }
-  }
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status === 429)
+      return reply.status(429).send({ error: { code: 'TOO_MANY_REQUESTS', message: 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.' } });
+    if (status === 413) return reply.status(413).send({ error: { code: 'BAD_REQUEST', message: 'حجم درخواست بیش از حد مجاز است.' } });
+    if (status && status < 500) return reply.status(status).send({ error: { code: 'BAD_REQUEST', message: 'درخواست نامعتبر است.' } });
+    req.log.error({ err }, 'unhandled error');
+    if (process.env.DEBUG_ERRORS) console.error('UNHANDLED', err);
+    return reply.status(500).send({ error: { code: 'INTERNAL', message: 'خطای داخلی سرور. لطفاً دوباره تلاش کنید.' } });
+  });
 
-  await app.register(healthRoutes(deps), { prefix: '/api' });
-  await app.register(authRoutes(deps), { prefix: '/api/v1/auth' });
-  await app.register(meRoutes(deps), { prefix: '/api/v1/me' });
-  await app.register(adminRoutes(deps), { prefix: '/api/v1/admin' });
-  await app.register(catalogRoutes(deps), { prefix: '/api/v1/catalog' });
-  await app.register(uploadRoutes(deps), { prefix: '/api/v1/uploads' });
-  await app.register(offeringRoutes(deps), { prefix: '/api/v1/offerings' });
-  await app.register(reservationRoutes(deps), { prefix: '/api/v1/reservations' });
-  await app.register(deliveryRoutes(deps), { prefix: '/api/v1/delivery' });
-  await app.register(financeRoutes(deps), { prefix: '/api/v1/finance' });
-  await app.register(paymentRoutes(deps), { prefix: '/api/v1/payments' });
-  await app.register(importRoutes(deps), { prefix: '/api/v1/imports' });
-  await app.register(notificationRoutes(deps), { prefix: '/api/v1/notifications' });
-  await app.register(reportRoutes(deps), { prefix: '/api/v1/reports' });
-  await app.register(settingsRoutes(deps), { prefix: '/api/v1/settings' });
-  await app.register(staffRoutes(deps), { prefix: '/api/v1/staff' });
-  await app.register(employeeRoutes(deps), { prefix: '/api/v1/employees' });
-
-  // ممیزی زیر /api/v1/audit
-  const { auditRoutes } = await import('./routes/audit.routes.js');
-  await app.register(auditRoutes(deps), { prefix: '/api/v1/audit' });
-
-  return app as unknown as AppInstance;
+  registerAuth(app, db, { publicOrigin: new URL(env.PUBLIC_BASE_URL).origin, secureCookies: env.NODE_ENV !== 'test' });
+  systemRoutes(app, pool);
+  authRoutes(app, db, env);
+  meRoutes(app, db);
+  catalogRoutes(app, db);
+  offeringRoutes(app, db);
+  deliveryRoutes(app, db);
+  adminRoutes(app, db);
+  importRoutes(app, db, env);
+  reportRoutes(app, db);
+  uploadRoutes(app, db, env);
+  paymentRoutes(app, db, env, gateway === undefined ? gatewayFromEnv(env) : gateway);
+  return app;
 }

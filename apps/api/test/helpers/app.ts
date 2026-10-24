@@ -1,61 +1,32 @@
-import type { FastifyInstance } from 'fastify';
-import type { Logger } from 'pino';
-import { readEnv, testEnv, type AppEnv } from '../../src/config/env.js';
-import { buildApp, type AppInstance } from '../../src/app.js';
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import { buildApp } from '../../src/app.js';
 import { createDb, createPool, type Db } from '../../src/db/client.js';
-import { createSilentLogger } from '../../src/lib/logger.js';
-import { getTestDb, testDatabaseUrl } from './db.js';
-import { invalidateSettingsCacheForDb } from '../../src/services/settings.service.js';
+import { loadEnv } from '../../src/env.js';
+import { seeded } from './db.js';
 
-/**
- * ساخت نمونهٔ اپ برای تست‌های یکپارچه (با `app.inject` — بدون شبکه).
- * env تستی کامل است تا مسیر «fail-fast نبودِ کلید» هم قابل تست باشد.
- */
+export const TEST_ORIGIN = 'http://localhost:3101';
 
-export type TestApp = {
-  app: AppInstance;
-  db: Db;
-  env: AppEnv;
-  log: Logger;
-  close: () => Promise<void>;
-};
-
-export async function buildTestApp(overrides: Partial<Record<string, string>> = {}): Promise<TestApp> {
-  const envResult = readEnv(testEnv({ DATABASE_URL: testDatabaseUrl(), ...overrides }) as NodeJS.ProcessEnv);
-  if (!envResult.ok) throw new Error(`env تست نامعتبر: ${envResult.issues.join(' | ')}`);
-  const env = envResult.env;
-  const log = createSilentLogger();
-  const db = getTestDb();
-  invalidateSettingsCacheForDb(db);
-  const app = await buildApp({ env, db, logger: log });
-  await app.ready();
+export async function testApp(overrides: Record<string, string> = {}, gateway: import('../../src/services/gateway.js').PaymentGateway | null = null) {
+  await seeded();
+  const env = loadEnv({
+    NODE_ENV: 'test',
+    PUBLIC_BASE_URL: TEST_ORIGIN,
+    DATABASE_URL: process.env.TEST_DATABASE_URL,
+    NATIONAL_ID_PEPPER: 'p'.repeat(40),
+    CSRF_SECRET: 'c'.repeat(40),
+    SETUP_CODE: 'setup-code-0123456789',
+    UPLOAD_DIR: '/tmp/food-test-uploads',
+    TRUSTED_PROXY_HOPS: '1',
+    ...overrides,
+  } as NodeJS.ProcessEnv);
+  const pool = createPool(env.DATABASE_URL, 20);
+  const db = createDb(pool);
+  const app = await buildApp({ env, db, pool, gateway });
   return {
     app,
     db,
+    pool,
     env,
-    log,
-    close: async () => {
-      await app.close();
-    },
-  };
-}
-
-/** ساخت اپ با pool مستقل (برای تست‌هایی که app را می‌بندند). */
-export async function buildIsolatedApp(overrides: Partial<Record<string, string>> = {}): Promise<TestApp> {
-  const envResult = readEnv(testEnv({ DATABASE_URL: testDatabaseUrl(), ...overrides }) as NodeJS.ProcessEnv);
-  if (!envResult.ok) throw new Error(`env تست نامعتبر: ${envResult.issues.join(' | ')}`);
-  const env = envResult.env;
-  const log = createSilentLogger();
-  const pool = createPool(testDatabaseUrl(), 12, 'food-test-isolated');
-  const db = createDb(pool);
-  invalidateSettingsCacheForDb(db);
-  const app = (await buildApp({ env, db, logger: log })) as unknown as FastifyInstance & AppInstance;
-  await app.ready();
-  return {
-    app: app as AppInstance,
-    db,
-    env,
-    log,
     close: async () => {
       await app.close();
       await pool.end();
@@ -63,198 +34,71 @@ export async function buildIsolatedApp(overrides: Partial<Record<string, string>
   };
 }
 
-// ---------------------------------------------------------------------------
-// کلاینت تست با «jar» کوکی و مدیریت خودکار CSRF
-// ---------------------------------------------------------------------------
-
-export type TestClient = {
-  get: <T = unknown>(url: string, query?: Record<string, unknown>) => Promise<TestResponse<T>>;
-  post: <T = unknown>(url: string, body?: unknown) => Promise<TestResponse<T>>;
-  put: <T = unknown>(url: string, body?: unknown) => Promise<TestResponse<T>>;
-  patch: <T = unknown>(url: string, body?: unknown) => Promise<TestResponse<T>>;
-  delete: <T = unknown>(url: string, body?: unknown) => Promise<TestResponse<T>>;
-  upload: <T = unknown>(
-    url: string,
-    file: { name: string; buffer: Buffer; mimeType?: string },
-    query?: Record<string, unknown>,
-  ) => Promise<TestResponse<T>>;
-  raw: (
-    method: string,
-    url: string,
-    options?: { body?: unknown; headers?: Record<string, string>; query?: Record<string, unknown> },
-  ) => Promise<TestResponse<unknown>>;
-  cookies: () => Record<string, string>;
-  csrf: () => string;
-};
-
-export type TestResponse<T> = {
-  status: number;
-  body: T;
-  headers: Record<string, string | string[] | undefined>;
-  raw: string;
-};
-
-/**
- * کلاینت تست:
- *  - کوکی‌های پاسخ را نگه می‌دارد (نشست و CSRF)
- *  - برای متدهای غیر GET هدر `X-CSRF-Token` را از کوکی `csrf` می‌سازد
- *  - `Origin` هم‌دامنه ارسال می‌کند
- */
-export function createTestClient(
-  app: AppInstance,
-  options: { origin?: string; host?: string; userAgent?: string; headers?: Record<string, string> } = {},
-): TestClient {
-  const jar: Record<string, string> = {};
-  const origin = options.origin ?? 'http://localhost:3001';
-  const host = options.host ?? 'localhost:3001';
-  const userAgent = options.userAgent ?? 'vitest-agent';
-
-  const absorbCookies = (headers: Record<string, string | string[] | undefined>): void => {
-    const raw = headers['set-cookie'];
-    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    for (const cookieHeader of list) {
-      const [pair] = String(cookieHeader).split(';');
-      const index = pair?.indexOf('=') ?? -1;
-      if (index <= 0 || !pair) continue;
-      const name = pair.slice(0, index).trim();
-      const value = pair.slice(index + 1).trim();
-      if (value === '' || /Expires=Thu, 01 Jan 1970/i.test(String(cookieHeader))) delete jar[name];
-      else jar[name] = value;
+/** Minimal cookie-jar client that performs CSRF double-submit like the browser adapter. */
+export class Client {
+  jar = new Map<string, string>();
+  constructor(
+    private app: FastifyInstance,
+    public ip = '10.0.0.1',
+  ) {}
+  private cookieHeader() {
+    return [...this.jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+  private absorb(r: LightMyRequestResponse) {
+    for (const c of r.cookies) {
+      if (c.value === '' || (c.expires && c.expires.getTime() < Date.now())) this.jar.delete(c.name);
+      else this.jar.set(c.name, c.value);
     }
-  };
-
-  const send = async (
-    method: string,
-    url: string,
-    init: { body?: unknown; headers?: Record<string, string>; query?: Record<string, unknown> } = {},
-  ): Promise<TestResponse<unknown>> => {
-    const headers: Record<string, string> = {
-      origin,
-      host,
-      'user-agent': userAgent,
-      ...options.headers,
-      ...init.headers,
-    };
-    const cookieHeader = Object.entries(jar)
-      .map(([name, value]) => `${name}=${value}`)
-      .join('; ');
-    if (cookieHeader) headers.cookie = cookieHeader;
-    if (method.toUpperCase() !== 'GET' && jar.csrf && !('x-csrf-token' in headers)) headers['x-csrf-token'] = jar.csrf;
-
-    const response = await app.inject({
-      method: method.toUpperCase() as 'GET',
+  }
+  async upload(url: string, file: { name: string; data: Buffer; type?: string }, fields: Record<string, string> = {}) {
+    if (!this.jar.has('__Host-csrf')) this.absorb(await this.app.inject({ method: 'GET', url: '/api/v1/auth/csrf', headers: { 'x-forwarded-for': this.ip } }));
+    const b = '----foodtest' + Math.random().toString(16).slice(2);
+    const parts: Buffer[] = [];
+    for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    parts.push(
+      Buffer.from(
+        `--${b}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\nContent-Type: ${file.type ?? 'application/octet-stream'}\r\n\r\n`,
+      ),
+      file.data,
+      Buffer.from(`\r\n--${b}--\r\n`),
+    );
+    const r = await this.app.inject({
+      method: 'POST',
       url,
-      query: init.query as Record<string, string> | undefined,
-      payload: init.body === undefined ? undefined : (init.body as object | string),
-      headers,
+      payload: Buffer.concat(parts),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${b}`,
+        cookie: this.cookieHeader(),
+        'x-forwarded-for': this.ip,
+        origin: TEST_ORIGIN,
+        'x-csrf-token': this.jar.get('__Host-csrf') ?? '',
+      },
     });
-
-    absorbCookies(response.headers as unknown as Record<string, string | string[] | undefined>);
-
-    const raw = response.body ?? '';
-    const parsed: unknown = raw && typeof raw === 'string' ? tryParse(raw) : raw;
-    return {
-      status: response.statusCode,
-      body: parsed,
-      headers: response.headers as Record<string, string | string[] | undefined>,
-      raw: String(raw),
-    };
-  };
-
-  const client: TestClient = {
-    get: (url, query) => send('GET', url, { query }) as never,
-    post: (url, body) => send('POST', url, { body }) as never,
-    put: (url, body) => send('PUT', url, { body }) as never,
-    patch: (url, body) => send('PATCH', url, { body }) as never,
-    delete: (url, body) => send('DELETE', url, { body }) as never,
-    upload: async (url, file, query) => {
-      const boundary = `----vitest${Date.now()}`;
-      const head = Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\nContent-Type: ${file.mimeType ?? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}\r\n\r\n`,
-        'utf8',
-      );
-      const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
-      const payload = Buffer.concat([head, Buffer.from(new Uint8Array(file.buffer)), tail]);
-      const headers: Record<string, string> = {
-        origin,
-        host,
-        'user-agent': userAgent,
-        'content-type': `multipart/form-data; boundary=${boundary}`,
-      };
-      const cookieHeader = Object.entries(jar)
-        .map(([name, value]) => `${name}=${value}`)
-        .join('; ');
-      if (cookieHeader) headers.cookie = cookieHeader;
-      if (jar.csrf) headers['x-csrf-token'] = jar.csrf;
-
-      const queryString = query ? `?${new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString()}` : '';
-      const response = await app.inject({ method: 'POST', url: `${url}${queryString}`, payload, headers });
-      absorbCookies(response.headers as unknown as Record<string, string | string[] | undefined>);
-      const raw = response.body ?? '';
-      const parsed: unknown = tryParse(String(raw));
-      return {
-        status: response.statusCode,
-        body: parsed,
-        headers: response.headers as Record<string, string | string[] | undefined>,
-        raw: String(raw),
-      } as never;
-    },
-    raw: (method, url, init) => send(method, url, init),
-    cookies: () => ({ ...jar }),
-    csrf: () => jar.csrf ?? '',
-  };
-
-  return client;
-}
-
-function tryParse(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
+    this.absorb(r);
+    return { status: r.statusCode, body: r.body ? (JSON.parse(r.body) as any) : null }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+  async raw(url: string) {
+    const r = await this.app.inject({ method: 'GET', url, headers: { cookie: this.cookieHeader(), 'x-forwarded-for': this.ip } });
+    return { status: r.statusCode, headers: r.headers, body: r.rawPayload };
+  }
+  async req(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, body?: unknown, headers: Record<string, string> = {}) {
+    if (method !== 'GET' && !this.jar.has('__Host-csrf'))
+      this.absorb(await this.app.inject({ method: 'GET', url: '/api/v1/auth/csrf', headers: { 'x-forwarded-for': this.ip } }));
+    const r = await this.app.inject({
+      method,
+      url,
+      payload: body as object | undefined,
+      headers: {
+        cookie: this.cookieHeader(),
+        'x-forwarded-for': this.ip,
+        origin: TEST_ORIGIN,
+        ...(method !== 'GET' ? { 'x-csrf-token': this.jar.get('__Host-csrf') ?? '' } : {}),
+        ...headers,
+      },
+    });
+    this.absorb(r);
+    return { status: r.statusCode, body: r.body ? (JSON.parse(r.body) as any) : null }; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 }
 
-/** گرفتن کوکی CSRF با یک GET بی‌خطر. */
-export async function primeCsrf(client: TestClient): Promise<string> {
-  await client.get('/api/v1/auth/setup-status');
-  return client.csrf();
-}
-
-/** ورود به‌عنوان دانشجو و برگرداندن کلاینت احراز‌هویت‌شده. */
-export async function loginStudent(
-  app: AppInstance,
-  studentNumber: string,
-  nationalId: string,
-  options: { userAgent?: string } = {},
-): Promise<TestClient> {
-  const client = createTestClient(app, { userAgent: options.userAgent });
-  await primeCsrf(client);
-  const response = await client.post('/api/v1/auth/student/login', { studentNumber, nationalId });
-  if (response.status !== 200) {
-    throw new Error(`ورود دانشجو ناموفق بود (${response.status}): ${response.raw}`);
-  }
-  return client;
-}
-
-/** ورود به‌عنوان کارکنان. */
-export async function loginStaff(app: AppInstance, username: string, password: string): Promise<TestClient> {
-  const client = createTestClient(app);
-  await primeCsrf(client);
-  const response = await client.post('/api/v1/auth/staff/login', { username, password });
-  if (response.status !== 200) {
-    throw new Error(`ورود کارکنان ناموفق بود (${response.status}): ${response.raw}`);
-  }
-  return client;
-}
-
-/** ورود به‌عنوان کارمند (مشتری سلف). */
-export async function loginEmployee(app: AppInstance, username: string, password: string): Promise<TestClient> {
-  const client = createTestClient(app);
-  await primeCsrf(client);
-  const response = await client.post('/api/v1/auth/employee/login', { username, password });
-  if (response.status !== 200) {
-    throw new Error(`ورود کارمند ناموفق بود (${response.status}): ${response.raw}`);
-  }
-  return client;
-}
+export type { Db };

@@ -1,15 +1,1 @@
-{
-  "semi": true,
-  "singleQuote": true,
-  "trailingComma": "all",
-  "printWidth": 140,
-  "tabWidth": 2,
-  "arrowParens": "always",
-  "endOfLine": "lf",
-  "overrides": [
-    {
-      "files": ["*.md"],
-      "options": { "proseWrap": "preserve", "embeddedLanguageFormatting": "off" }
-    }
-  ]
-}
+{ "singleQuote": true, "printWidth": 160, "trailingComma": "all" }

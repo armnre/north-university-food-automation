@@ -1,48 +1,43 @@
 import { sql } from 'drizzle-orm';
-import { DEFAULT_SETTINGS, MEAL_SLOT_DEFAULTS } from '@food/shared';
-import type { Db, Tx } from './client.js';
-import { cafeterias, mealSlots, systemSettings } from './schema/index.js';
+import type { Db } from './client.js';
+import { accounts, cafeterias, mealSlots, systemSettings } from './schema.js';
 
-/**
- * Seed **تولیدی**: فقط دادهٔ ساختاری لازم برای کار سامانه.
- *  - وعده‌های پیش‌فرض (صبحانه/ناهار/شام) — ساعت‌ها در صفحهٔ تنظیمات قابل ویرایش‌اند
- *  - مقدارهای پیش‌فرض `system_settings`
- *  - یک سلف مرکزی
- *
- * هیچ دادهٔ نمونه/دمو در production نوشته نمی‌شود. seed دمو فقط در development
- * و با پرچم صریح `ALLOW_DEMO_SEED=true` (فایل `seed-demo.ts`) انجام می‌شود.
- *
- * همهٔ عملیات idempotent است (onConflictDoNothing) و می‌توان چند بار اجرا شود.
- */
-export type SeedResult = { mealSlots: number; settings: number; cafeteriaCreated: boolean };
+export const DEFAULT_SETTINGS: Record<string, unknown> = {
+  student_cancellation_enabled: false,
+  cancel_cutoff_hours: 12,
+  noshow_grace_minutes: 30,
+  noshow_refund: false,
+  scan_window_before_minutes: 60,
+  scan_window_after_minutes: 60,
+  min_gateway_payable_rial: 10000,
+  online_payment_enabled: false,
+  reminderHoursBeforeMeal: 2,
+  max_manual_adjust_rial: 50000000,
+  support_text: '',
+  help_text: '',
+  policy_text: '',
+};
 
-export async function seedProduction(target: Db | Tx): Promise<SeedResult> {
-  for (const slot of MEAL_SLOT_DEFAULTS) {
-    await target
-      .insert(mealSlots)
-      .values({
-        code: slot.code,
-        title: slot.titleFa,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        sortOrder: slot.sortOrder,
-      })
-      .onConflictDoNothing();
-  }
+export const SYSTEM_ACCOUNTS = ['meal-revenue', 'payment-gateway', 'manual-cash', 'refund-credit'] as const;
 
-  for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-    await target
-      .insert(systemSettings)
-      .values({ key, value: sql`to_jsonb(${value}::text)` })
-      .onConflictDoNothing();
-  }
-
-  const existing = await target.select({ id: cafeterias.id }).from(cafeterias).limit(1);
-  let cafeteriaCreated = false;
-  if (existing.length === 0) {
-    await target.insert(cafeterias).values({ name: 'سلف مرکزی', location: '', isActive: true });
-    cafeteriaCreated = true;
-  }
-
-  return { mealSlots: MEAL_SLOT_DEFAULTS.length, settings: Object.keys(DEFAULT_SETTINGS).length, cafeteriaCreated };
+/** Production seed: idempotent; only reference data, never demo people. */
+export async function seedProduction(db: Db) {
+  await db
+    .insert(mealSlots)
+    .values([
+      { code: 'breakfast', title: 'صبحانه', startTime: '07:00', endTime: '09:00', sortOrder: 1 },
+      { code: 'lunch', title: 'ناهار', startTime: '12:00', endTime: '14:30', sortOrder: 2 },
+      { code: 'dinner', title: 'شام', startTime: '19:00', endTime: '21:00', sortOrder: 3 },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(systemSettings)
+    .values(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => ({ key, value, updatedBy: 'seed' })))
+    .onConflictDoNothing();
+  await db
+    .insert(accounts)
+    .values(SYSTEM_ACCOUNTS.map((code) => ({ kind: 'System' as const, code })))
+    .onConflictDoNothing();
+  const existing = await db.select({ n: sql<number>`count(*)::int` }).from(cafeterias);
+  if ((existing[0]?.n ?? 0) === 0) await db.insert(cafeterias).values({ name: 'سلف مرکزی' });
 }

@@ -1,9 +1,0 @@
-{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"],
-      "@project/components/*": ["../../packages/components/*"]
-    }
-  },
-  "include": ["src"]
-}

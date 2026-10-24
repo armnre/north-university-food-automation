@@ -1,47 +1,8 @@
-# محیط توسعه: فقط PostgreSQL. اپلیکیشن با `npm run dev` روی میزبان اجرا می‌شود.
-# اگر Docker در دسترس نیست، تست‌های یکپارچه به‌صورت خودکار یک PostgreSQL داخلی
-# (embedded-postgres از npm) راه‌اندازی می‌کنند — به Docker نیازی ندارند.
+# Development only. Production uses systemd without Docker (see docs/DEPLOY.md).
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: food_postgres_dev
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: food_dev
-      POSTGRES_PASSWORD: food_dev_password
-      POSTGRES_DB: food_dev
-      # منطقهٔ عملیاتی سامانه
-      TZ: Asia/Tehran
-    ports:
-      - '127.0.0.1:5432:5432'
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U food_dev -d food_dev']
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    shm_size: 256mb
-
-  # پایگاه دادهٔ تست (جدا از توسعه تا truncate باعث از دست رفتن داده نشود)
-  postgres_test:
-    image: postgres:15-alpine
-    container_name: food_postgres_test
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: food_test
-      POSTGRES_PASSWORD: food_test_password
-      POSTGRES_DB: food_test
-      TZ: Asia/Tehran
-    ports:
-      - '127.0.0.1:5433:5432'
-    tmpfs:
-      - /var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U food_test -d food_test']
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-volumes:
-  pgdata:
+    image: postgres:16
+    environment: { POSTGRES_PASSWORD: devpassword, POSTGRES_DB: food_automation }
+    ports: ['127.0.0.1:5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+volumes: { pgdata: {} }

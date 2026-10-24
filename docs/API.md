@@ -1,121 +1,77 @@
-# مرجع قرارداد REST API (`docs/API.md`)
+# API
 
-همهٔ مسیرهای کسب‌وکار زیر پیشوند `/api/v1` قرار دارند (به‌جز مسیرهای پایش زیرساخت `/api/health` و `/api/ready`).
-فرانت‌اند و API روی یک دامنه (Same-Origin) سرو می‌شوند؛ بنابراین **CORS خاموش** است.
-احراز هویت بر پایهٔ کوکی نشست `__Host-sid` (`HttpOnly; Secure; SameSite=Strict; Path=/`) انجام می‌شود و تمام متدهای تغییر وضعیت (`POST`، `PUT`، `PATCH`، `DELETE`) نیازمند تطابق زمان‌ثابت کوکی `csrf` با هدر `X-CSRF-Token` و بررسی `Origin` هستند.
+> خودکار از رجیستری routeهای Fastify تولید می‌شود (`npm run docs:api`). 67 route.
 
-قالب یکپارچهٔ خطاها در کل سامانه:
+همه‌ی پاسخ‌های خطا: `{ "error": { "code", "message", "details?" } }` با پیام فارسی. درخواست‌های تغییردهنده به کوکی نشست `__Host-sid` و هدر `x-csrf-token` (برابر کوکی `__Host-csrf`) نیاز دارند. مبالغ به ریال صحیح‌اند.
 
-```json
-{
-  "error": {
-    "code": "DUPLICATE_OFFERING",
-    "message": "«چلوکباب کوبیده» را قبلاً رزرو کرده‌اید.",
-    "details": {}
-  }
-}
-```
+مسیرهای بیرون از `/api/v1`: `GET /api/health`، `GET /api/ready`، `GET /uploads/foods/:name`.
 
-در محیط‌های غیر تولیدی (`NODE_ENV !== 'production'`) مستندات تعاملی OpenAPI روی مسیر `/api/docs` در دسترس است.
-
----
-
-## فهرست مسیرهای REST API
-
-### ۱. پایش و سلامت زیرساخت
-
-| متد و مسیر        | دسترسی | توضیح                                                      |
-| ----------------- | ------ | ---------------------------------------------------------- |
-| `GET /api/health` | عمومی  | زنده‌بودن فرآیند API                                       |
-| `GET /api/ready`  | عمومی  | بررسی اتصال PostgreSQL و اعمال شدن کامل مهاجرت‌های Drizzle |
-
-### ۲. احراز هویت و مدیریت نشست (`/api/v1/auth`)
-
-| متد و مسیر                   | دسترسی               | توضیح                                                                           |
-| ---------------------------- | -------------------- | ------------------------------------------------------------------------------- |
-| `GET /auth/setup-status`     | عمومی                | بررسی نیاز به ساخت اولین مدیر ارشد و صدور کوکی اولیهٔ CSRF                      |
-| `POST /auth/setup-admin`     | عمومی + `SETUP_CODE` | ساخت یک‌بارمصرف اولین حساب `SuperAdmin`                                         |
-| `POST /auth/student/login`   | عمومی                | ورود دانشجو با شمارهٔ دانشجویی + کد ملی ۱۰ رقمی (با محدودیت نرخ و کپچای تطبیقی) |
-| `POST /auth/staff/login`     | عمومی                | ورود کارکنان مدیریتی/اجرایی با نام کاربری و رمز Argon2id                        |
-| `POST /auth/employee/login`  | عمومی                | ورود کارمندان/اعضای هیئت‌علمی (مشتریان سلف)                                     |
-| `GET /auth/captcha`          | عمومی                | دریافت کپچای ریاضی SVG پس از تلاش‌های ناموفق                                    |
-| `GET /auth/me`               | نشست معتبر           | اطلاعات کاربر جاری، مجوزها و وضعیت تغییر اجباری رمز                             |
-| `POST /auth/change-password` | کارکنان / کارمندان   | تغییر رمز عبور و ابطال سایر نشست‌های فعال                                       |
-| `GET /auth/sessions`         | نشست معتبر           | فهرست نشست‌های فعال کاربر                                                       |
-| `DELETE /auth/sessions`      | نشست معتبر           | ابطال یک نشست مشخص                                                              |
-| `POST /auth/logout`          | نشست معتبر           | خروج از نشست فعلی                                                               |
-| `POST /auth/logout-all`      | نشست معتبر           | خروج از همهٔ دستگاه‌ها                                                          |
-
-### ۳. پنل مشتری — دانشجو و کارمند (`/api/v1/me`)
-
-| متد و مسیر                             | دسترسی | توضیح                                                                                                |
-| -------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
-| `GET /me/menu`                         | مشتری  | منوی روزها و وعده‌ها به وقت تهران، قیمت گروه کاربری، تصویر غذا و وضعیت رزرو هر آیتم                  |
-| `POST /me/reservations`                | مشتری  | رزرو تکی با اعتبار بازپرداخت موجود (پشتیبانی از چند غذا در یک وعده؛ ممنوعیت تکرار همان `offeringId`) |
-| `POST /me/checkout`                    | مشتری  | ثبت سبد با اعتبار بازپرداخت موجود                                                                    |
-| `GET /me/reservations`                 | مشتری  | تاریخچه و بلیط‌های فعال رزرو (کد ۸ کاراکتری بدون `R-` و توکن QR)                                     |
-| `POST /me/reservations/:id/qr/reissue` | مشتری  | ابطال توکن QR قبلی و صدور توکن جدید برای رزرو فعال                                                   |
-| `GET /me/wallet`                       | مشتری  | موجودی اعتبار بازپرداخت و گردش حساب دفتر کل                                                          |
-| `GET /me/notifications`                | مشتری  | اعلان‌های شخصی و عمومی                                                                               |
-| `POST /me/notifications/read`          | مشتری  | علامت‌گذاری اعلان‌ها به‌عنوان خوانده‌شده                                                             |
-
-### ۴. پرداخت مستقیم درگاه (`/api/v1/payments`)
-
-| متد و مسیر                        | دسترسی              | توضیح                                                                                          |
-| --------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
-| `GET /payments/status`            | عمومی / مشتری       | وضعیت فعال بودن درگاه آنلاین و حداقل مبلغ قابل پرداخت شاپرک                                    |
-| `POST /payments/checkout/start`   | مشتری               | شروع تسویهٔ سبد: کسر خودکار اعتبار قبلی + رزرو فوری (`instant`) یا انتقال به درگاه (`gateway`) |
-| `GET /payments/zarinpal/callback` | عمومی (بازگشت بانک) | استعلام اجباری `verify` سمت سرور، ثبت اتمیک با `SAVEPOINT` و هدایت به صفحهٔ نتیجه              |
-| `POST /payments/result`           | مشتری (مالک پرداخت) | دریافت رسید کامل پرداخت، رزروهای ثبت‌شده و مبالغ برگشتی به اعتبار                              |
-| `GET /payments/sandbox/redirect`  | فقط غیر تولیدی      | صفحهٔ شبیه‌ساز درگاه آزمایشی (در `production` غیرفعال است)                                     |
-
-### ۵. کاتالوگ، تصویر غذا و برنامه‌ریزی منو
-
-| متد و مسیر                                 | دسترسی               | توضیح                                                                                                                |
-| ------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `GET /catalog`                             | مجوزهای مرتبط        | فهرست غذاها، سلف‌ها، پیمانکاران و وعده‌ها                                                                            |
-| `POST /catalog` / `PUT /catalog/:kind/:id` | `catalog` یا `foods` | ایجاد و ویرایش موجودیت‌های کاتالوگ (غیرفعال‌سازی نرم به‌جای حذف)                                                     |
-| `POST /uploads/food-image`                 | `foods`              | آپلود امن تصویر غذا (`multipart/form-data`، حداکثر ۲ مگابایت، بررسی بایت جادویی، تغییر اندازه به ≤۱۲۰۰px و حذف EXIF) |
-| `GET /offerings`                           | مجوزهای مرتبط        | فهرست وعده‌های برنامه‌ریزی‌شده                                                                                       |
-| `POST /offerings` / `PUT /offerings/:id`   | `offerings`          | تعریف یا ویرایش وعده با ثبت تاریخچهٔ تغییر قیمت                                                                      |
-| `POST /offerings/bulk`                     | `offerings`          | برنامه‌ریزی دسته‌ای منوی هفتگی                                                                                       |
-| `PATCH /offerings/:id/status`              | `offerings`          | تغییر وضعیت وعده (از جمله «تمام شد» / «لغو وعده» با بازپرداخت خودکار دسته‌ای)                                        |
-
-### ۶. تحویل در سلف و عملیات آفلاین (`/api/v1/delivery`)
-
-| متد و مسیر                        | دسترسی                     | توضیح                                                                          |
-| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------ |
-| `POST /delivery/scan`             | `delivery` / `deliveryAll` | بررسی وضعیت بلیط با توکن QR یا کد ۸ کاراکتری (با یا بدون پیشوند `R-`)          |
-| `POST /delivery/confirm`          | `delivery` / `deliveryAll` | ثبت تحویل اتمیک و جلوگیری از تحویل دوباره در اسکن‌های هم‌زمان                  |
-| `GET /delivery/stats`             | `delivery` / `deliveryAll` | آمار لحظه‌ای تحویل سلف                                                         |
-| `GET /delivery/offline-manifest`  | `delivery` / `deliveryAll` | دریافت فهرست آفلاین روز جاری سلف (فقط هش SHA-256 توکن‌ها، بدون افشای توکن خام) |
-| `POST /delivery/sync`             | `delivery` / `deliveryAll` | همگام‌سازی idempotent تحویل‌های ثبت‌شده در حالت آفلاین                         |
-| `GET /delivery/offline-conflicts` | `audit` / `dashboard`      | مشاهدهٔ تعارض‌های احتمالی همگام‌سازی آفلاین                                    |
-
-### ۷. امور مالی، دانشجویان، واردسازی اکسل، گزارش‌ها و مدیریت سیستم
-
-| متد و مسیر                                                                                                                    | دسترسی                                      | توضیح                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `POST /finance/adjust`                                                                                                        | `financeWrite`                              | اصلاح دستی اعتبار حساب مشتری با دلیل الزامی و کلید idempotency                        |
-| `GET /finance/ledger`                                                                                                         | `finance`                                   | مرور و فیلتر دفتر کل دوطرفه                                                           |
-| `GET /finance/reconcile`                                                                                                      | `finance` / `audit`                         | بررسی تطابق جمع صفر دفتر کل و موجودی همهٔ حساب‌ها                                     |
-| `GET /finance/payments/needs-review`                                                                                          | `finance`                                   | فهرست پرداخت‌های نیازمند بررسی (`NeedsReview`)                                        |
-| `POST /finance/payments/:id/resolve`                                                                                          | `financeWrite`                              | تلاش مجدد تسویه یا تعیین‌تکلیف دستی پرداخت `NeedsReview` با ثبت ممیزی                 |
-| `GET /admin/dashboard`                                                                                                        | `dashboard` / `contractorReports`           | شاخص‌های مدیریتی روزانه و هفتگی                                                       |
-| `GET /admin/students` / `PATCH /admin/students/:id/status`                                                                    | `students` / `studentStatus`                | جستجوی دانشجویان و تغییر وضعیت (`Active` / `Inactive` / `Graduated` با ابطال نشست‌ها) |
-| `GET /admin/students/:id/report`                                                                                              | `students` / `finance`                      | کارنامهٔ جامع رزرو و گردش مالی یک دانشجو                                              |
-| `GET /reservations` / `GET /admin/reservations`                                                                               | `reservations` / `finance` / `students`     | فهرست و فیلتر رزروها                                                                  |
-| `POST /reservations/:id/cancel`                                                                                               | `reservationCancel`                         | لغو اداری رزرو با دلیل الزامی و بازپرداخت خودکار به اعتبار کیف پول                    |
-| `POST /imports/preview` / `POST /imports/:id/commit` / `POST /imports/:id/cancel` / `POST /imports/:id/undo` / `GET /imports` | `import`                                    | پیش‌نمایش، اعمال تراکنشی، لغو و بازگردانی ایمن آخرین واردسازی اکسل دانشجویان          |
-| `GET /reports/summary` / `GET /reports/advanced` / `.csv` / `.xlsx`                                                           | `reports` / `contractorReports` / `finance` | گزارش‌های تحلیلی و خروجی اکسل/CSV (با تفکیک کامل `Cancelled` از `NoShow`)             |
-| `GET /settings` / `PUT /settings`                                                                                             | `settings` (`finance` برای خواندن)          | مدیریت تنظیمات عملیاتی سامانه با ثبت ممیزی قبل/بعد                                    |
-| `GET /audit` / `GET /audit/actions`                                                                                           | `audit`                                     | مرور لاگ‌های ممیزی تغییرناپذیر                                                        |
-| `GET/POST/PUT /staff` و `/employees`                                                                                          | `users` / `operators` / `employees`         | مدیریت سلسله‌مراتبی کارکنان سامانه و حساب مشتریان کارمند/هیئت‌علمی                    |
-
----
-
-## قواعد سراسری قرارداد
-
-- **واحد پول:** تمامی مبالغ در درخواست و پاسخ API به **ریال** (عدد صحیح) هستند و در رابط کاربری به تومان نمایش داده می‌شوند.
-- **زمان و تقویم:** فیلدهای تاریخ سرویس (`serviceDate`) به صورت `YYYY-MM-DD` منطبق بر روز تقویمی تهران (`Asia/Tehran`) و زمان‌های مطلق به صورت ISO 8601 UTC مبادله می‌شوند.
-- **حریم خصوصی داده‌ها:** کد ملی خام، هش رمز عبور و توکن QR سایر کاربران هرگز در هیچ پاسخی برگردانده نمی‌شوند.
+| متد | مسیر | دسترسی |
+|---|---|---|
+| `GET` | `/api/v1/admin/dashboard` | `dashboardView` — مشاهده داشبورد مدیریت |
+| `GET` | `/api/v1/admin/students` | `studentsRead` — مشاهده دانشجویان |
+| `GET` | `/api/v1/admin/students/:id/report` | `studentsRead` — مشاهده دانشجویان |
+| `PATCH` | `/api/v1/admin/students/:id/status` | `studentsWrite` — تغییر وضعیت دانشجو |
+| `GET` | `/api/v1/audit` | `auditRead` — مشاهده رخدادهای حسابرسی |
+| `GET` | `/api/v1/auth/captcha` | عمومی |
+| `POST` | `/api/v1/auth/change-password` | هر کاربر واردشده |
+| `GET` | `/api/v1/auth/csrf` | عمومی |
+| `POST` | `/api/v1/auth/employee/login` | عمومی |
+| `POST` | `/api/v1/auth/logout` | هر کاربر واردشده |
+| `POST` | `/api/v1/auth/logout-all` | هر کاربر واردشده |
+| `GET` | `/api/v1/auth/me` | هر کاربر واردشده |
+| `GET` | `/api/v1/auth/sessions` | هر کاربر واردشده |
+| `DELETE` | `/api/v1/auth/sessions/:id` | هر کاربر واردشده |
+| `POST` | `/api/v1/auth/setup-admin` | عمومی |
+| `GET` | `/api/v1/auth/setup-status` | عمومی |
+| `POST` | `/api/v1/auth/staff/login` | عمومی |
+| `POST` | `/api/v1/auth/student/login` | عمومی |
+| `GET` | `/api/v1/catalog` | `menuRead` — مشاهده منو و آمار آشپزخانه |
+| `PUT` | `/api/v1/catalog` | `catalogWrite` — مدیریت پیمانکار/سلف/غذا |
+| `POST` | `/api/v1/delivery/confirm` | `deliveryScan` — اسکن و تحویل غذا |
+| `GET` | `/api/v1/delivery/offline-manifest` | `deliveryScan` — اسکن و تحویل غذا |
+| `POST` | `/api/v1/delivery/scan` | `deliveryScan` — اسکن و تحویل غذا |
+| `GET` | `/api/v1/delivery/stats` | `deliveryScan` — اسکن و تحویل غذا |
+| `POST` | `/api/v1/delivery/sync` | `deliveryScan` — اسکن و تحویل غذا |
+| `GET` | `/api/v1/employees` | `employeesManage` — مدیریت کارمندان |
+| `PUT` | `/api/v1/employees` | `employeesManage` — مدیریت کارمندان |
+| `POST` | `/api/v1/employees/bulk` | `employeesManage` — مدیریت کارمندان |
+| `POST` | `/api/v1/finance/adjust` | `financeWrite` — شارژ/تعدیل دستی |
+| `GET` | `/api/v1/finance/ledger` | `financeRead` — مشاهده دفتر کل |
+| `GET` | `/api/v1/imports` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `POST` | `/api/v1/imports/:id/approve-conflict` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `POST` | `/api/v1/imports/:id/cancel` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `POST` | `/api/v1/imports/:id/commit` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `POST` | `/api/v1/imports/:id/undo` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `POST` | `/api/v1/imports/preview` | `importsManage` — ایمپورت اکسل دانشجویان |
+| `GET` | `/api/v1/me/menu` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/notifications` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/profile` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/reservations` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reservations/:id/cancel` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reservations/:id/reissue-qr` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reserve` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/wallet` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/notifications` | `notificationsSend` — ارسال اعلان |
+| `POST` | `/api/v1/notifications` | `notificationsSend` — ارسال اعلان |
+| `GET` | `/api/v1/offerings` | `menuRead` — مشاهده منو و آمار آشپزخانه |
+| `PUT` | `/api/v1/offerings` | `menuWrite` — مدیریت منو و قیمت |
+| `POST` | `/api/v1/offerings/:id/cancel` | `reservationsAdminCancel` — لغو اداری رزرو و لغو/اتمام وعده |
+| `POST` | `/api/v1/offerings/:id/sold-out` | `reservationsAdminCancel` — لغو اداری رزرو و لغو/اتمام وعده |
+| `POST` | `/api/v1/offerings/bulk` | `menuWrite` — مدیریت منو و قیمت |
+| `POST` | `/api/v1/payments/:id/resolve` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
+| `POST` | `/api/v1/payments/checkout/start` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/payments/needs-review` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
+| `POST` | `/api/v1/payments/reconcile` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
+| `POST` | `/api/v1/payments/result` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/payments/zarinpal/callback` | عمومی |
+| `GET` | `/api/v1/reports/advanced` | `reportsRead` — گزارش‌ها |
+| `GET` | `/api/v1/reports/export` | `reportsRead` — گزارش‌ها |
+| `GET` | `/api/v1/reports/summary` | `reportsRead` — گزارش‌ها |
+| `GET` | `/api/v1/reservations` | `reservationsRead` — مشاهده رزروها |
+| `POST` | `/api/v1/reservations/:id/cancel` | `reservationsAdminCancel` — لغو اداری رزرو و لغو/اتمام وعده |
+| `GET` | `/api/v1/settings` | هر کاربر واردشده |
+| `PUT` | `/api/v1/settings` | `settingsWrite` — ویرایش تنظیمات |
+| `GET` | `/api/v1/staff` | `staffManage` — مدیریت کاربران کارکنان |
+| `PUT` | `/api/v1/staff` | `staffManage` — مدیریت کاربران کارکنان |
+| `POST` | `/api/v1/uploads/food-image` | `catalogWrite` — مدیریت پیمانکار/سلف/غذا |

@@ -1,48 +1,15 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-build/
-*.tsbuildinfo
-
-# Test / coverage
-coverage/
-.nyc_output/
-playwright-report/
-test-results/
-.playwright-cli/
-
-# Local databases started by the test harness (embedded Postgres)
-pgdata/
-.pg-embedded/
-
-# Environment & secrets — never commit real values
+node_modules
+dist
+.env.local
+.tsbuildinfo
+__zite__*
+.npmrc
+node_modules
+dist
 .env
 .env.*
 !.env.example
-secrets.env
-*.pem
-*.key
-*.p12
-*.age
-
-# Zite leftovers
-__zite__*
-.zite/
-zite.*.json
-.npmrc
-
-# Editor / OS
-.DS_Store
-.idea/
-.vscode/
-*.log
-tmp/
-.tmp/
-
-
-# Local uploaded files (dev/test)
-.uploads/
-apps/api/.uploads/
-
+coverage
+playwright-report
+test-results
+dist-web

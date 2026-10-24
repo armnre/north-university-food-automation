@@ -98,3 +98,20 @@
 ## گام بعد
 مرحله ۴: adapter فرانت (alias `zitejs/api` ← REST)، حذف Zite، صفحه‌های کم‌شده؛ سپس توقف اجباری ۱.
 - مرحله ۴ بخش ۴: تطبیق قرارداد پاسخ‌ها با API واقعی (داشبورد، ایمپورت، تنظیمات، کاربران، اعلان‌ها، رزروها، دانشجویان، گزارش مدیریتی) با probe روی PostgreSQL واقعی.
+
+
+## feat/production-ready — گام ۱ (۱۴۰۵/۰۸/۰۲)
+
+انتقال: commit از طریق GitHub API (اتصال GitHub در Zite)؛ `git push` در این محیط ممکن نبود چون توکن در shell در دسترس نیست. هیچ توکنی در ریپو نیست.
+
+| مورد | وضعیت |
+|---|---|
+| worker جدا (`src/worker.ts` → `dist/worker.js`، SIGTERM/SIGINT امن، لاگ pino، زمان‌بندی با ساعت تهران) | نوشته شد؛ **اجرا نشده** |
+| قفل `pg_try_advisory_lock` و ثبت هر اجرا در `job_runs` | نوشته شد؛ تست در CI |
+| reconcile-pending-payments هر ۱۰ دقیقه (همان `settlePayment` ایدمپوتنت؛ خطای شبکه ⇒ Pending؛ NeedsReview ⇒ هشدار audit) | نوشته شد؛ تست در CI |
+| reconcile-ledger و cleanup شبانه | نوشته شد؛ تست در CI |
+| mark-no-show، send-meal-reminders، drain-sms-outbox، نمایش آخرین اجرا در UI | **انجام نشد** — گام بعد |
+| اسکریپت‌های `dev:worker`، `start`، `start:worker` | اضافه شد |
+| CI (`.github/workflows/ci.yml`، ماتریس PostgreSQL 16/15) | در صورت مجوز workflow اضافه شد؛ نتیجه = اولین اجرای Actions |
+| `test/integration/worker.test.ts` (بدون callback، اجرای دوباره، callback متأخر، دو worker هم‌زمان، مرز نیمه‌شب تهران) | نوشته شد؛ **محلی اجرا نشد** (دیسک ۱٫۴GB، بدون PostgreSQL) |
+| فاز ۱ (راستی‌آزمایی کامل) و فازهای ۳ تا ۱۰ | **انجام نشد** |

@@ -13,12 +13,14 @@
     "typecheck": "npm run typecheck -w @food/shared && npm run typecheck -w @food/api",
     "format:check": "prettier --check \"apps/api/{src,test}/**/*.ts\" \"packages/shared/src/**/*.ts\"",
     "format": "prettier --write \"apps/api/{src,test}/**/*.ts\" \"packages/shared/src/**/*.ts\"",
-    "test": "npm run test -w @food/shared",
+    "test": "npm run build -w @food/shared && npm run test -w @food/shared && npm run docs:rbac:check && npm run test -w @food/api",
     "test:integration": "npm run test:integration -w @food/api",
     "test:e2e": "echo \"E2E: added in stage 6\" && exit 1",
     "db:generate": "npm run db:generate -w @food/api",
     "db:migrate": "npm run db:migrate -w @food/api",
-    "prepare": "husky || true"
+    "prepare": "husky || true",
+    "docs:rbac": "npm run build -w @food/shared && node scripts/gen-rbac-doc.mjs",
+    "docs:rbac:check": "node scripts/gen-rbac-doc.mjs --check"
   },
   "dependencies": {
     "zitejs": "0.9.136"

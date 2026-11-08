@@ -733,11 +733,6 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       return { values: await getSettings(tx) };
     });
   });
-}
-
-export const csvCell = (v: string) => {
-  const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 
   // ── background jobs: last run of each job (SuperAdmin) ────────────────
   app.get('/api/v1/admin/jobs', async (req) => {
@@ -749,4 +744,9 @@ export const csvCell = (v: string) => {
     const pending = await db.execute<{ c: number }>(sql`SELECT count(*)::int AS c FROM notification_outbox WHERE sent_at IS NULL AND attempts < 6`);
     return { jobs: r.rows, smsPending: pending.rows[0]?.c ?? 0 };
   });
+}
+
+export const csvCell = (v: string) => {
+  const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };

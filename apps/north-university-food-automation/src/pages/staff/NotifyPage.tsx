@@ -13,7 +13,7 @@ import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
 
 type N = { id: string; title: string; body: string; audience: string; createdAt: string; studentNumber: string | null };
-const AUD: Record<string, string> = { all: 'همگانی', students: 'دانشجویان', employees: 'کارمندان', personal: 'شخصی' };
+const AUD: Record<string, string> = { all: 'همگانی', students: 'دانشجویان', employees: 'اساتید', personal: 'شخصی' };
 
 export default function NotifyPage() {
   const { token } = useSession();
@@ -29,7 +29,7 @@ export default function NotifyPage() {
   };
   return (
     <>
-      <PageHeader title="اعلان‌ها" subtitle="اعلان گروهی برای همه، دانشجویان یا کارمندان؛ یا اعلان شخصی برای یک دانشجو" />
+      <PageHeader title="اعلان‌ها" subtitle="اعلان گروهی برای همه، دانشجویان یا اساتید؛ یا اعلان شخصی برای یک دانشجو" />
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
         <Section title="ارسال اعلان">
           <form onSubmit={send} className="space-y-3">

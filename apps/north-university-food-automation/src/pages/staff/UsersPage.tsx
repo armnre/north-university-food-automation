@@ -40,7 +40,7 @@ export default function UsersPage() {
   const newForm = (): Form => ({ username: '', fullName: '', role: roles[0] ?? 'Operator', active: true, cafeteriaId: '', contractorId: '', mobile: '', resetPassword: false });
   return (
     <>
-      <PageHeader title="کاربران و نقش‌ها" subtitle="حساب‌های کارکنان از حساب دانشجو و کارمند جداست. هر نقش فقط نقش‌های پایین‌تر از خود را می‌سازد." actions={roles.length > 0 && <Button onClick={() => setForm(newForm())}><Plus className="ms-1 h-4 w-4" />کاربر جدید</Button>} />
+      <PageHeader title="کاربران و نقش‌ها" subtitle="حساب‌های کارکنان از حساب دانشجو و استاد جداست. هر نقش فقط نقش‌های پایین‌تر از خود را می‌سازد." actions={roles.length > 0 && <Button onClick={() => setForm(newForm())}><Plus className="ms-1 h-4 w-4" />کاربر جدید</Button>} />
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.staff.length ? <EmptyState title="کاربری وجود ندارد" /> : (
         <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>

@@ -37,7 +37,7 @@ export default function StaffApp({ me }: { me: StaffMe }) {
     { to: '/catalog', label: 'سلف و پیمانکار', icon: <Building2 />, perm: 'catalogWrite', el: <CatalogPage /> },
     { to: '/finance', label: 'امور مالی', icon: <Wallet />, perm: 'financeRead', el: <FinancePage />, mobile: true },
     { to: '/reports', label: 'گزارش‌ها', icon: <BarChart3 />, perm: 'reportsRead', only: (r: string) => r !== 'Contractor', el: <ReportsPage /> },
-    { to: '/employees', label: 'کارمندان', icon: <Briefcase />, perm: 'employeesManage', el: <EmployeesPage /> },
+    { to: '/employees', label: 'اساتید', icon: <Briefcase />, perm: 'employeesManage', el: <EmployeesPage /> },
     { to: '/payments-review', label: 'پرداخت‌های نیازمند بررسی', icon: <ShieldAlert />, perm: 'paymentsReview', el: <PaymentsReviewPage /> },
     { to: '/notify', label: 'اعلان‌ها', icon: <Bell />, perm: 'notificationsSend', el: <NotifyPage /> },
     { to: '/users', label: 'کاربران و نقش‌ها', icon: <UsersRound />, perm: 'staffManage', el: <UsersPage /> },

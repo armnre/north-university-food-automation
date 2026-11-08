@@ -73,7 +73,7 @@ function StaffForm({ kind = 'staff' }: { kind?: 'staff' | 'employee' }) {
       <Field id="p" label="رمز عبور" dir="ltr" type="password" autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} />
       {captcha && <CaptchaBox captcha={captcha} answer={ans} onAnswer={setAns} />}
       <ErrorNote message={err} onClose={() => setErr('')} />
-      <Button type="submit" className="h-11 w-full text-base" disabled={!u || !p || (!!captcha && !ans) || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}{kind === 'staff' ? 'ورود کارکنان' : 'ورود کارمندان'}</Button>
+      <Button type="submit" className="h-11 w-full text-base" disabled={!u || !p || (!!captcha && !ans) || busy}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}{kind === 'staff' ? 'ورود کارکنان' : 'ورود اساتید'}</Button>
     </form>
   );
 }
@@ -130,7 +130,7 @@ export default function LoginPage() {
             <TabsList className="mb-6 grid h-12 w-full grid-cols-3 rounded-2xl p-1">
               <TabsTrigger value="student" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><GraduationCap className="ms-1.5 h-4 w-4" />دانشجو</TabsTrigger>
               <TabsTrigger value="staff" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><Building2 className="ms-1.5 h-4 w-4" />کارکنان</TabsTrigger>
-              <TabsTrigger value="employee" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><BadgeCheck className="ms-1.5 h-4 w-4" />کارمند</TabsTrigger>
+              <TabsTrigger value="employee" className="rounded-xl data-[state=active]:shadow-[var(--shadow-sm)]"><BadgeCheck className="ms-1.5 h-4 w-4" />اساتید</TabsTrigger>
             </TabsList>
             <TabsContent value="student"><StudentForm /></TabsContent>
             <TabsContent value="staff">{needsSetup ? <SetupForm onDone={() => setNeedsSetup(false)} /> : <StaffForm />}</TabsContent>

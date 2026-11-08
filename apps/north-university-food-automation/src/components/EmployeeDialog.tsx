@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { errMsg } from '../lib/format';
 
 export type Employee = { id: string; username: string; firstName: string; lastName: string; kind: string; personnelCode: string; mobile: string; active: boolean; lastLoginAt: string | null; balanceRial: number };
-export const EMP_KINDS: Record<string, string> = { Staff: 'کارمند', Faculty: 'هیئت علمی', Contractor: 'پیمانکار' };
+export const EMP_KINDS: Record<string, string> = { Faculty: 'هیئت علمی', Visiting: 'استاد مدعو' };
 
 export default function EmployeeDialog({ employee, onClose, onSaved }: { employee: Employee | null; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ username: employee?.username ?? '', firstName: employee?.firstName ?? '', lastName: employee?.lastName ?? '', kind: employee?.kind ?? 'Staff', personnelCode: employee?.personnelCode ?? '', mobile: employee?.mobile ?? '', active: employee?.active ?? true, resetPassword: false });
+  const [f, setF] = useState({ username: employee?.username ?? '', firstName: employee?.firstName ?? '', lastName: employee?.lastName ?? '', kind: employee?.kind ?? 'Faculty', personnelCode: employee?.personnelCode ?? '', mobile: employee?.mobile ?? '', active: employee?.active ?? true, resetPassword: false });
   const [busy, setBusy] = useState(false);
   const [temp, setTemp] = useState<string | null>(null);
   const userOk = /^[a-zA-Z0-9._-]{3,50}$/.test(f.username);
@@ -31,7 +31,7 @@ export default function EmployeeDialog({ employee, onClose, onSaved }: { employe
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent dir="rtl">
-        <DialogHeader><DialogTitle>{employee ? 'ویرایش کارمند' : 'کارمند جدید'}</DialogTitle><DialogDescription>رمز موقت فقط یک بار نمایش داده می‌شود و کاربر در اولین ورود باید آن را تغییر دهد.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{employee ? 'ویرایش استاد' : 'استاد جدید'}</DialogTitle><DialogDescription>رمز موقت فقط یک بار نمایش داده می‌شود و کاربر در اولین ورود باید آن را تغییر دهد.</DialogDescription></DialogHeader>
         {temp ? (
           <div className="space-y-3">
             <p className="text-sm">رمز موقت برای <b dir="ltr">{f.username}</b>:</p>

@@ -236,7 +236,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       .regex(/^[a-zA-Z0-9._-]+$/),
     firstName: z.string().trim().min(1).max(60),
     lastName: z.string().trim().min(1).max(60),
-    kind: z.enum(['Staff', 'Faculty', 'Contractor']).default('Staff'),
+    kind: z.enum(['Staff', 'Faculty', 'Contractor', 'Visiting']).default('Faculty'),
     personnelCode: z.string().max(30).optional(),
     mobile: z.string().max(20).optional(),
   });

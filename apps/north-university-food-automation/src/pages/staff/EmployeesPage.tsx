@@ -23,10 +23,10 @@ export default function EmployeesPage() {
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE));
   return (
     <>
-      <PageHeader title="کارمندان" subtitle="کارمندان، اعضای هیئت علمی و پیمانکاران با نام کاربری وارد می‌شوند و مثل دانشجو رزرو می‌کنند."
+      <PageHeader title="اساتید" subtitle="اساتید هیئت علمی و مدعو با نام کاربری وارد می‌شوند و مثل دانشجو رزرو می‌کنند."
         actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setBulk(true)}><Upload className="ms-1 h-4 w-4" />افزودن از فایل</Button><Button onClick={() => setEdit('new')}><Plus className="ms-1 h-4 w-4" />کارمند جدید</Button></div>} />
       <Input className="mb-4 max-w-sm" placeholder="جست‌وجوی نام، نام کاربری یا کد پرسنلی" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
-      {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.employees.length ? <EmptyState title="کارمندی یافت نشد" /> : (
+      {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.employees.length ? <EmptyState title="استادی یافت نشد" /> : (
         <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>
             <TableHeader><TableRow>
@@ -38,7 +38,7 @@ export default function EmployeesPage() {
                 <TableRow key={e.id}>
                   <TableCell className="font-medium">{e.firstName} {e.lastName}{e.personnelCode && <div className="text-xs text-muted-foreground num">{e.personnelCode}</div>}</TableCell>
                   <TableCell dir="ltr" className="text-right font-mono text-xs">{e.username}</TableCell>
-                  <TableCell>{EMP_KINDS[e.kind] ?? e.kind}</TableCell>
+                  <TableCell>{({ ...EMP_KINDS, Staff: 'کارمند', Contractor: 'پیمانکار' } as Record<string, string>)[e.kind] ?? e.kind}</TableCell>
                   <TableCell className="hidden num md:table-cell">{rial(e.balanceRial)}</TableCell>
                   <TableCell className="hidden text-xs lg:table-cell">{faDateTime(e.lastLoginAt)}</TableCell>
                   <TableCell>{e.active ? <Pill tone="success">فعال</Pill> : <Pill tone="muted">غیرفعال</Pill>}</TableCell>

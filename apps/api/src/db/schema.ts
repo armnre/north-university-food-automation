@@ -27,7 +27,7 @@ const rial = (name: string) => bigint(name, { mode: 'bigint' });
 export const studentStatus = pgEnum('student_status', ['Active', 'OnLeave', 'Withdrawn', 'Graduated', 'Removed']);
 export const staffRole = pgEnum('staff_role', ['SuperAdmin', 'StudentAffairs', 'NutritionManager', 'Finance', 'Contractor', 'Operator']);
 export const customerGroup = pgEnum('customer_group', ['Student', 'Employee']);
-export const employeeKind = pgEnum('employee_kind', ['Staff', 'Faculty', 'Contractor']);
+export const employeeKind = pgEnum('employee_kind', ['Staff', 'Faculty', 'Contractor', 'Visiting']);
 export const accountKind = pgEnum('account_kind', ['Customer', 'System']);
 export const offeringStatus = pgEnum('offering_status', ['Draft', 'Published', 'SoldOut', 'Cancelled']);
 export const reservationStatus = pgEnum('reservation_status', ['Reserved', 'Delivered', 'Cancelled', 'NoShow', 'Rejected']);
@@ -80,7 +80,7 @@ export const employees = pgTable(
     mustChangePassword: boolean('must_change_password').notNull().default(true),
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
-    kind: employeeKind('kind').notNull().default('Staff'),
+    kind: employeeKind('kind').notNull().default('Faculty'),
     personnelCode: text('personnel_code'),
     mobile: text('mobile'),
     active: boolean('active').notNull().default(true),

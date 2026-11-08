@@ -9,7 +9,7 @@ import { errMsg, faNum } from '../lib/format';
 
 type Row = { username: string; firstName: string; lastName: string; kind: string; personnelCode?: string; mobile?: string };
 const MAX = 300;
-const KIND_MAP: Record<string, string> = { staff: 'Staff', faculty: 'Faculty', contractor: 'Contractor', 'کارمند': 'Staff', 'هیئت علمی': 'Faculty', 'پیمانکار': 'Contractor' };
+const KIND_MAP: Record<string, string> = { staff: 'Staff', faculty: 'Faculty', contractor: 'Contractor', 'کارمند': 'Staff', 'هیئت علمی': 'Faculty', visiting: 'Visiting', 'مدعو': 'Visiting', 'استاد مدعو': 'Visiting', 'استاد': 'Faculty', 'پیمانکار': 'Contractor' };
 const COLS: Record<string, keyof Row> = { username: 'username', 'نام کاربری': 'username', first_name: 'firstName', firstname: 'firstName', 'نام': 'firstName', last_name: 'lastName', lastname: 'lastName', 'نام خانوادگی': 'lastName', kind: 'kind', 'نوع': 'kind', personnel_code: 'personnelCode', 'کد پرسنلی': 'personnelCode', mobile: 'mobile', 'موبایل': 'mobile' };
 const fa2en = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
@@ -24,7 +24,7 @@ function parse(rows: string[][]): { rows: Row[]; errors: string[] } {
     const line = i + 2;
     if (!/^[a-zA-Z0-9._-]{3,50}$/.test(o.username ?? '')) errors.push(`ردیف ${faNum(line)}: نام کاربری نامعتبر`);
     else if (!o.firstName || !o.lastName) errors.push(`ردیف ${faNum(line)}: نام و نام خانوادگی الزامی است`);
-    else out.push({ username: o.username, firstName: o.firstName, lastName: o.lastName, kind: KIND_MAP[(o.kind ?? '').toLowerCase()] ?? KIND_MAP[o.kind ?? ''] ?? 'Staff', personnelCode: o.personnelCode || undefined, mobile: o.mobile || undefined });
+    else out.push({ username: o.username, firstName: o.firstName, lastName: o.lastName, kind: KIND_MAP[(o.kind ?? '').toLowerCase()] ?? KIND_MAP[o.kind ?? ''] ?? 'Faculty', personnelCode: o.personnelCode || undefined, mobile: o.mobile || undefined });
   });
   const seen = new Set<string>();
   for (const r of out) { const u = r.username.toLowerCase(); if (seen.has(u)) errors.push(`نام کاربری تکراری: ${r.username}`); seen.add(u); }
@@ -70,12 +70,12 @@ export default function EmployeeBulkDialog({ onClose, onSaved }: { onClose: () =
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>افزودن گروهی کارمندان</DialogTitle>
+          <DialogTitle>افزودن گروهی اساتید</DialogTitle>
           <DialogDescription>فایل با ستون‌های username، first_name، last_name و (اختیاری) kind، personnel_code، mobile. همه ردیف‌ها با هم ثبت می‌شوند یا هیچ‌کدام.</DialogDescription>
         </DialogHeader>
         {creds ? (
           <div className="space-y-3 rounded-lg border border-amber-300/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/30">
-            <p className="font-medium">{faNum(creds.created)} کارمند ثبت شد.</p>
+            <p className="font-medium">{faNum(creds.created)} استاد ثبت شد.</p>
             <p className="text-muted-foreground">رمزهای موقت فقط همین یک‌بار نمایش داده می‌شوند و جایی ذخیره نمی‌شوند. فایل را دانلود و به‌صورت امن تحویل دهید.</p>
             <Button onClick={() => download('employee-credentials.csv', creds.csv)}><Download className="ms-1 h-4 w-4" />دانلود رمزهای موقت</Button>
           </div>
@@ -104,7 +104,7 @@ export default function EmployeeBulkDialog({ onClose, onSaved }: { onClose: () =
           {creds ? <Button variant="outline" onClick={onClose}>بستن</Button> : (
             <>
               <Button variant="outline" onClick={onClose} disabled={busy}>انصراف</Button>
-              <Button onClick={submit} disabled={!ok || busy}>{busy && <Loader2 className="ms-1 h-4 w-4 animate-spin" />}ثبت {ok ? faNum(parsed.rows.length) : ''} کارمند</Button>
+              <Button onClick={submit} disabled={!ok || busy}>{busy && <Loader2 className="ms-1 h-4 w-4 animate-spin" />}ثبت {ok ? faNum(parsed.rows.length) : ''} استاد</Button>
             </>
           )}
         </DialogFooter>

@@ -36,6 +36,7 @@ const item = z.discriminatedUnion('kind', [
     defaultCapacity: z.number().int().min(0).max(100_000).nullable().optional(),
     suitableMeals: z.array(MEAL).optional(),
     imagePath: z.string().max(200).nullable().optional(),
+    imageUrl: z.string().max(300).optional(),
   }),
 ]);
 
@@ -76,7 +77,7 @@ export function catalogRoutes(app: FastifyInstance, db: Db) {
         defaultPriceRial: x.default_price_rial == null ? null : n(x.default_price_rial as bigint),
         defaultCapacity: x.default_capacity ?? null,
         suitableMeals: x.suitable_meals ?? [],
-        imageUrl: x.image_path ? `/uploads/${x.image_path}` : '',
+        imageUrl: x.image_path ? `/uploads/foods/${x.image_path}` : '',
         imagePath: x.image_path ?? null,
       })),
     };
@@ -84,7 +85,9 @@ export function catalogRoutes(app: FastifyInstance, db: Db) {
 
   app.put('/api/v1/catalog', { config: { access: 'catalogWrite' } }, async (req) => {
     const p = requirePrincipal(req);
-    const it = item.parse(req.body);
+    // The UI sends { item: {...} }; accept both wrapped and bare bodies.
+    const body = req.body as { item?: unknown } | undefined;
+    const it = item.parse(body && typeof body === 'object' && 'item' in body ? body.item : body);
     let id: string | undefined;
     if (it.kind === 'contractor') {
       const r = it.id
@@ -105,12 +108,19 @@ export function catalogRoutes(app: FastifyInstance, db: Db) {
           );
       id = r.rows[0]?.id;
     } else {
+      // UI sends imageUrl ('/uploads/foods/<file>' or '' to remove); derive the stored file name.
+      let clearImage = false;
+      if (it.imagePath === undefined && it.imageUrl !== undefined) {
+        const m = it.imageUrl.match(/\/uploads\/foods\/([^/?#]+)$/);
+        if (m) it.imagePath = m[1];
+        else if (it.imageUrl === '') clearImage = true;
+      }
       if (it.imagePath && !/^[a-z0-9-]+\.(jpg|png|webp)$/.test(it.imagePath)) fail('BAD_REQUEST', 'تصویر نامعتبر است.');
       const meals = `{${(it.suitableMeals ?? []).join(',')}}`;
       const price = it.defaultPriceRial == null ? null : String(it.defaultPriceRial);
       const r = it.id
         ? await db.execute<{ id: string }>(
-            sql`UPDATE foods SET name=${it.name}, description=${it.description}, active=${it.active}, category=${it.category ?? null}, default_price_rial=${price}::bigint, default_capacity=${it.defaultCapacity ?? null}, suitable_meals=${meals}::text[], image_path=COALESCE(${it.imagePath ?? null}, image_path), updated_at=now() WHERE id=${it.id} RETURNING id`,
+            sql`UPDATE foods SET name=${it.name}, description=${it.description}, active=${it.active}, category=${it.category ?? null}, default_price_rial=${price}::bigint, default_capacity=${it.defaultCapacity ?? null}, suitable_meals=${meals}::text[], image_path=CASE WHEN ${clearImage}::boolean THEN NULL ELSE COALESCE(${it.imagePath ?? null}, image_path) END, updated_at=now() WHERE id=${it.id} RETURNING id`,
           )
         : await db.execute<{ id: string }>(
             sql`INSERT INTO foods (name, description, active, category, default_price_rial, default_capacity, suitable_meals, image_path) VALUES (${it.name}, ${it.description}, ${it.active}, ${it.category ?? null}, ${price}::bigint, ${it.defaultCapacity ?? null}, ${meals}::text[], ${it.imagePath ?? null}) RETURNING id`,

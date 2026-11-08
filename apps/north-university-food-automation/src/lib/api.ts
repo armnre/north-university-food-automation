@@ -65,6 +65,7 @@ export const auditList = ep('GET', '/audit');
 // catalog / offerings
 export const catalogList = ep('GET', '/catalog');
 export const catalogSave = ep('PUT', '/catalog');
+export const catalogDelete = (i: In) => request('DELETE', '/catalog/:kind/:id', i);
 export const offeringsList = ep('GET', '/offerings');
 export const offeringSave = ep('PUT', '/offerings');
 export const offeringsBulk = ep('POST', '/offerings/bulk');

@@ -138,4 +138,28 @@ export function catalogRoutes(app: FastifyInstance, db: Db) {
     });
     return { id };
   });
+
+  // Hard delete only when nothing references the record; otherwise ask to deactivate.
+  app.delete('/api/v1/catalog/:kind/:id', { config: { access: 'catalogWrite' } }, async (req) => {
+    const p = requirePrincipal(req);
+    const { kind, id } = z.object({ kind: z.enum(['food', 'contractor', 'cafeteria']), id: z.string().uuid() }).parse(req.params);
+    let r: { rows: { id: string; name: string }[] };
+    try {
+      r =
+        kind === 'food'
+          ? await db.execute<{ id: string; name: string }>(sql`DELETE FROM foods WHERE id=${id} RETURNING id, name`)
+          : kind === 'contractor'
+            ? await db.execute<{ id: string; name: string }>(sql`DELETE FROM contractors WHERE id=${id} RETURNING id, name`)
+            : await db.execute<{ id: string; name: string }>(sql`DELETE FROM cafeterias WHERE id=${id} RETURNING id, name`);
+    } catch (e) {
+      const code = (e as { code?: string; cause?: { code?: string } }).code ?? (e as { cause?: { code?: string } }).cause?.code;
+      if (code === '23503')
+        fail('CONFLICT', 'این مورد در منوها یا رزروهای ثبت‌شده استفاده شده و قابل حذف نیست. به‌جای حذف، آن را غیرفعال کنید.');
+      throw e;
+    }
+    const row = r.rows[0];
+    if (!row) fail('NOT_FOUND', 'رکورد پیدا نشد.');
+    await audit(db, { actor: p.actor, action: `${kind}.delete`, entityType: kind, entityId: id, data: { name: row.name }, requestId: req.id });
+    return { ok: true };
+  });
 }

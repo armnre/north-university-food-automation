@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Camera, Loader2, Minus, Plus, Search, Trash2, UtensilsCrossed, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { catalogList, catalogSave } from '../../lib/api';
+import { catalogDelete, catalogList, catalogSave } from '../../lib/api';
+import ConfirmButton from '../../components/ConfirmButton';
 import { useUpload } from '../../lib/upload';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
@@ -146,8 +147,13 @@ function FoodEditor({ form, setForm, token, onSaved }: { form: Form | null; setF
             <ErrorNote message={err} onClose={() => setErr('')} />
           </div>
         )}
-        <div className="border-t bg-card px-5 py-3 pb-safe">
-          <Button className="h-12 w-full rounded-2xl text-base font-bold" onClick={save} disabled={busy || isUploading || !!formErr}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}{formErr || 'ذخیره'}</Button>
+        <div className="flex gap-2 border-t bg-card px-5 py-3 pb-safe">
+          {form?.id && (
+            <ConfirmButton variant="outline" className="h-12 rounded-2xl border-destructive/40 text-destructive" title="حذف غذا" description={`«${form.name}» از کتابخانه حذف شود؟ اگر در منو استفاده شده باشد، فقط می‌توانید غیرفعالش کنید.`} confirmLabel="حذف" action={async () => { await catalogDelete({ token, kind: 'food', id: form.id }); setForm(null); onSaved(); return 'غذا حذف شد.'; }}>
+              <Trash2 className="ms-1 h-4 w-4" />حذف
+            </ConfirmButton>
+          )}
+          <Button className="h-12 flex-1 rounded-2xl text-base font-bold" onClick={save} disabled={busy || isUploading || !!formErr}>{busy && <Loader2 className="ms-2 h-4 w-4 animate-spin" />}{formErr || 'ذخیره'}</Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -101,3 +101,28 @@ describe('settings & students', () => {
     expect((await sc.req('GET', '/api/v1/auth/me')).status).toBe(401);
   });
 });
+
+describe('faculty / visiting employees', () => {
+  it('creates Faculty by default and Visiting on request, filters by kind, and keeps a legacy kind when omitted on update', async () => {
+    const sa = await as('StudentAffairs', '10.30.9.1');
+    const f = await sa.req('PUT', '/api/v1/employees', { username: 'fac.one', firstName: 'استاد', lastName: 'هیئت' });
+    const v = await sa.req('PUT', '/api/v1/employees', { username: 'vis.one', firstName: 'استاد', lastName: 'مدعو', kind: 'Visiting' });
+    expect(f.status).toBe(200);
+    expect(v.status).toBe(200);
+    const kindOf = async (u: string) => (await t.db.execute<{ kind: string }>(sql`SELECT kind::text AS kind FROM employees WHERE username=${u}`)).rows[0]!.kind;
+    expect(await kindOf('fac.one')).toBe('Faculty');
+    expect(await kindOf('vis.one')).toBe('Visiting');
+    const list = await sa.req('GET', '/api/v1/employees?kind=Visiting');
+    expect(list.body.employees.map((e: { username: string }) => e.username)).toContain('vis.one');
+    expect(list.body.employees.map((e: { username: string }) => e.username)).not.toContain('fac.one');
+
+    const legacy = await sa.req('PUT', '/api/v1/employees', { username: 'legacy.staff', firstName: 'قدیمی', lastName: 'کارمند', kind: 'Staff' });
+    const id = legacy.body.id as string;
+    expect((await sa.req('PUT', '/api/v1/employees', { id, username: 'legacy.staff', firstName: 'قدیمی', lastName: 'کارمند', mobile: '09120000000' })).status).toBe(200);
+    expect(await kindOf('legacy.staff')).toBe('Staff');
+    expect((await sa.req('PUT', '/api/v1/employees', { id, username: 'legacy.staff', firstName: 'قدیمی', lastName: 'کارمند', kind: 'Faculty' })).status).toBe(200);
+    expect(await kindOf('legacy.staff')).toBe('Faculty');
+    const a = await t.db.execute<{ data: { kind: string; previousKind?: string } }>(sql`SELECT data FROM audit_logs WHERE action='employee.update' AND entity_id=${id} ORDER BY created_at DESC LIMIT 1`);
+    expect(a.rows[0]!.data).toMatchObject({ kind: 'Faculty', previousKind: 'Staff' });
+  });
+});

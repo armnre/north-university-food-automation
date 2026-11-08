@@ -203,12 +203,12 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
 
   // ── employees (customers) ──────────────────────────────────────────────
   app.get('/api/v1/employees', { config: { access: 'employeesManage' } }, async (req) => {
-    const q = z.object({ search: z.string().max(80).optional(), ...page }).parse(req.query);
+    const q = z.object({ search: z.string().max(80).optional(), kind: z.enum(['Staff', 'Faculty', 'Contractor', 'Visiting']).optional(), ...page }).parse(req.query);
     const s = like(q.search);
     const r = await db.execute<
       Record<string, unknown>
     >(sql`SELECT e.id, e.username, e.first_name, e.last_name, e.kind, e.personnel_code, e.mobile, e.active, e.last_login_at, a.balance_rial, count(*) OVER()::int AS total
-      FROM employees e LEFT JOIN accounts a ON a.employee_id=e.id WHERE (${s}::text IS NULL OR e.username ILIKE ${s} OR e.first_name||' '||e.last_name ILIKE ${s} OR e.personnel_code ILIKE ${s})
+      FROM employees e LEFT JOIN accounts a ON a.employee_id=e.id WHERE (${s}::text IS NULL OR e.username ILIKE ${s} OR e.first_name||' '||e.last_name ILIKE ${s} OR e.personnel_code ILIKE ${s}) AND (${q.kind ?? null}::text IS NULL OR e.kind::text=${q.kind ?? null})
       ORDER BY e.last_name, e.first_name LIMIT ${q.limit} OFFSET ${q.offset}`);
     return {
       total: Number(r.rows[0]?.total ?? 0),
@@ -253,14 +253,22 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
   app.put('/api/v1/employees', { config: { access: 'employeesManage' } }, async (req) => {
     const p = requirePrincipal(req);
     if (!canManage(staffRole(req), 'Employee')) fail('FORBIDDEN', 'شما به این بخش دسترسی ندارید.');
+    // On update, an omitted kind keeps the stored value (legacy Staff/Contractor rows are never silently converted).
+    const raw = (req.body ?? {}) as { id?: unknown; kind?: unknown };
     const b = empSchema.extend({ id: z.string().uuid().optional(), active: z.boolean().default(true), resetPassword: z.boolean().optional() }).parse(req.body);
+    const kindGiven = raw.kind !== undefined && raw.kind !== null && raw.kind !== '';
     return db.transaction(async (tx) => {
       let temp: string | null = null;
       let id = b.id;
+      let prevKind: string | null = null;
       if (id) {
         if (b.resetPassword) temp = tempPassword();
+        const prev = await tx.execute<{ kind: string }>(sql`SELECT kind::text AS kind FROM employees WHERE id=${id} FOR UPDATE`);
+        if (!prev.rows[0]) fail('NOT_FOUND', 'کارمند پیدا نشد.');
+        prevKind = prev.rows[0].kind;
+        const kind = kindGiven ? b.kind : prevKind;
         const r =
-          await tx.execute(sql`UPDATE employees SET username=${b.username}, first_name=${b.firstName}, last_name=${b.lastName}, kind=${b.kind}, personnel_code=${b.personnelCode ?? null}, mobile=${b.mobile ?? null}, active=${b.active},
+          await tx.execute(sql`UPDATE employees SET username=${b.username}, first_name=${b.firstName}, last_name=${b.lastName}, kind=${kind}::employee_kind, personnel_code=${b.personnelCode ?? null}, mobile=${b.mobile ?? null}, active=${b.active},
           password_hash=COALESCE(${temp ? await hashPassword(temp) : null}, password_hash), must_change_password=(must_change_password OR ${!!temp}), updated_at=now() WHERE id=${id} RETURNING id`);
         if (!r.rows[0]) fail('NOT_FOUND', 'کارمند پیدا نشد.');
         if (!b.active || temp) await revokeAllForSubject(tx as unknown as Db, 'employee', id);
@@ -279,7 +287,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
         action: b.id ? 'employee.update' : 'employee.create',
         entityType: 'Employee',
         entityId: id,
-        data: { active: b.active, passwordReset: !!temp },
+        data: { active: b.active, passwordReset: !!temp, kind: b.id ? (kindGiven ? b.kind : prevKind) : b.kind, ...(prevKind && kindGiven && prevKind !== b.kind ? { previousKind: prevKind } : {}) },
         requestId: req.id,
       });
       return { id, temporaryPassword: temp };

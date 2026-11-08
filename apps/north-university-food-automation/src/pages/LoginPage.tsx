@@ -134,7 +134,7 @@ export default function LoginPage() {
             </TabsList>
             <TabsContent value="student"><StudentForm /></TabsContent>
             <TabsContent value="staff">{needsSetup ? <SetupForm onDone={() => setNeedsSetup(false)} /> : <StaffForm />}</TabsContent>
-            <TabsContent value="employee"><StaffForm kind="employee" /></TabsContent>
+            <TabsContent value="employee"><p className="mb-4 rounded-lg bg-accent px-3 py-2 text-xs text-accent-foreground">ورود اساتید هیئت علمی و اساتید مدعو با نام کاربری و رمزی که مدیریت تغذیه برایتان ساخته است.</p><StaffForm kind="employee" /></TabsContent>
           </Tabs>
         </div>
       </div>

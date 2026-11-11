@@ -1,0 +1,8 @@
+# Development only. Production uses systemd without Docker (see docs/DEPLOY.md).
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_PASSWORD: devpassword, POSTGRES_DB: food_automation }
+    ports: ['127.0.0.1:5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+volumes: { pgdata: {} }

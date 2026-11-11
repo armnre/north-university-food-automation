@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "types": [
+      "vite/client"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@project/components/*": [
+        "../../packages/components/*"
+      ]
+    }
+  },
+  "include": [
+    "src/App.tsx",
+    "src/pages",
+    "src/components",
+    "src/lib"
+  ]
+}

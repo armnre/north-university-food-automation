@@ -98,7 +98,7 @@
     "use-debounce": "10.0.6",
     "vite-plugin-insert-html": "^1.0.3",
     "xlsx": "^0.18.5",
-    "zitejs": "0.9.136",
+    "zitejs": "0.10.2",
     "zod": "3.24.2"
   },
   "devDependencies": {

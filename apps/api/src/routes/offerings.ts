@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { addDays, tehranDate, tehranWallToUtc } from '@food/shared';
+import { addDays, normalizeDigits, tehranDate, tehranWallToUtc } from '@food/shared';
 import type { Db, Tx } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { iso, MEAL_TYPE, n, toDate } from '../lib/customer.js';
@@ -10,23 +10,26 @@ import { audit } from '../services/audit.js';
 import { cancelReservationInTx } from '../services/cancel.js';
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-const rialN = z.number().int().min(0).max(100_000_000);
+const num = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v);
+const undef = (v: unknown) => (v === '' || v === null ? undefined : v);
+const rialN = z.preprocess(num, z.number().int().min(0).max(100_000_000));
 const SLOT: Record<string, string> = { Breakfast: 'breakfast', Lunch: 'lunch', Dinner: 'dinner' };
 
 const saveSchema = z.object({
-  id: z.string().uuid().optional(),
-  serviceDate: z.string().regex(dateRe),
+  id: z.preprocess(undef, z.string().uuid().optional()),
+  serviceDate: z.preprocess((v) => (typeof v === 'string' ? normalizeDigits(v).slice(0, 10) : v), z.string().regex(dateRe)),
   mealType: z.enum(['Breakfast', 'Lunch', 'Dinner']),
   foodId: z.string().uuid(),
-  cafeteriaId: z.string().uuid().optional(),
-  priceRial: rialN.optional(), // "one price for all"
-  prices: z.object({ Student: rialN, Employee: rialN }).partial().optional(),
-  capacity: z.number().int().min(1).max(100_000),
+  cafeteriaId: z.preprocess(undef, z.string().uuid().optional()),
+  priceRial: z.preprocess(undef, rialN.optional()), // "one price for all"
+  prices: z.preprocess(undef, z.object({ Student: z.preprocess(undef, rialN.optional()), Employee: z.preprocess(undef, rialN.optional()) }).optional()),
+  capacity: z.preprocess(num, z.number().int().min(1).max(100_000)),
   reserveDeadline: z.string().datetime({ offset: true }),
-  cancelDeadline: z.string().datetime({ offset: true }).optional().nullable(),
-  active: z.boolean(),
-  notes: z.string().max(1000).default(''),
-  reason: z.string().max(500).optional(),
+  cancelDeadline: z.preprocess((v) => (v === '' ? null : v), z.string().datetime({ offset: true }).optional().nullable()),
+  // Bulk menu builder omits it: a new menu item is published by default.
+  active: z.preprocess((v) => (v === undefined || v === null ? true : v === 'false' ? false : v === 'true' ? true : v), z.boolean()),
+  notes: z.preprocess((v) => (v == null ? '' : v), z.string().max(1000)),
+  reason: z.preprocess(undef, z.string().max(500).optional()),
 });
 export type SaveOffering = z.infer<typeof saveSchema>;
 
@@ -36,6 +39,12 @@ async function slotTimes(tx: Db | Tx, mealType: string) {
   );
   if (!r.rows[0]) fail('BAD_REQUEST', 'وعده نامعتبر است.');
   return r.rows[0];
+}
+async function exists(tx: Db | Tx, date: string, mealType: string, foodId: string) {
+  const r = await tx.execute<{ id: string }>(
+    sql`SELECT o.id FROM meal_offerings o JOIN meal_slots ms ON ms.id=o.meal_slot_id WHERE o.service_date=${date} AND ms.code=${SLOT[mealType]!} AND o.food_id=${foodId} AND o.status <> 'Cancelled' LIMIT 1`,
+  );
+  return !!r.rows[0];
 }
 async function defaultCafeteria(tx: Db | Tx) {
   const r = await tx.execute<{ id: string }>(sql`SELECT id FROM cafeterias WHERE active ORDER BY created_at LIMIT 1`);
@@ -194,36 +203,50 @@ export function offeringRoutes(app: FastifyInstance, db: Db) {
 
   app.post('/api/v1/offerings/bulk', { config: { access: 'menuWrite' } }, async (req) => {
     const p = requirePrincipal(req);
+    // The web sends mode 'items' (alias of 'create') and copy with targetStart + repeat.
+    const raw = { ...((req.body ?? {}) as Record<string, unknown>) };
+    if (raw.mode === 'items') raw.mode = 'create';
+    if (raw.mode === 'copy' && raw.targetFrom == null) raw.targetFrom = raw.targetStart;
     const b = z
       .discriminatedUnion('mode', [
-        z.object({ mode: z.literal('create'), items: z.array(saveSchema).min(1).max(200) }),
+        z.object({ mode: z.literal('create'), items: z.array(saveSchema).min(1).max(500) }),
         z.object({
           mode: z.literal('copy'),
           sourceFrom: z.string().regex(dateRe),
           sourceTo: z.string().regex(dateRe),
           targetFrom: z.string().regex(dateRe),
+          repeat: z.preprocess(num, z.number().int().min(1).max(12)).default(1),
           publish: z.boolean().default(false),
         }),
       ])
-      .parse(req.body);
+      .parse(raw);
     return db.transaction(async (tx) => {
       if (b.mode === 'create') {
         const ids = [];
-        for (const it of b.items) ids.push(await saveOffering(tx, p.actor, { ...it, id: undefined }));
-        return { created: ids.length, ids };
+        let skipped = 0;
+        for (const it of b.items) {
+          if (await exists(tx, it.serviceDate, it.mealType, it.foodId)) { skipped++; continue; }
+          ids.push(await saveOffering(tx, p.actor, { ...it, id: undefined }));
+        }
+        return { created: ids.length, skipped, ids };
       }
       const days = Math.round((Date.parse(b.sourceTo) - Date.parse(b.sourceFrom)) / 86400000);
       if (days < 0 || days > 13) fail('BAD_REQUEST', 'بازه‌ی کپی حداکثر دو هفته است.');
       const src = await tx.execute<Record<string, unknown>>(sql`
         SELECT o.*, ms.code AS slot FROM meal_offerings o JOIN meal_slots ms ON ms.id=o.meal_slot_id
         WHERE o.service_date BETWEEN ${b.sourceFrom} AND ${b.sourceTo} AND o.status <> 'Cancelled'`);
-      const shift = Math.round((Date.parse(b.targetFrom) - Date.parse(b.sourceFrom)) / 86400000);
+      const baseShift = Math.round((Date.parse(b.targetFrom) - Date.parse(b.sourceFrom)) / 86400000);
+      if (baseShift <= days) fail('BAD_REQUEST', 'تاریخ مقصد باید بعد از بازه‌ی مبدأ باشد.');
       const ids = [];
+      let skipped = 0;
+      for (let rep = 0; rep < b.repeat; rep++) {
+      const shift = baseShift + rep * (days + 1 > 1 ? 7 * Math.ceil((days + 1) / 7) : 1);
       for (const o of src.rows) {
         const prices = await tx.execute<{ customer_group: 'Student' | 'Employee'; price_rial: bigint }>(
           sql`SELECT customer_group, price_rial FROM offering_prices WHERE offering_id=${o.id as string}`,
         );
         const date = addDays(o.service_date as string, shift);
+        if (await exists(tx, date, MEAL_TYPE[o.slot as string]!, o.food_id as string)) { skipped++; continue; }
         const msBefore = toDate(o.meal_starts_at).getTime() - toDate(o.reserve_deadline).getTime();
         const slot = await slotTimes(tx, MEAL_TYPE[o.slot as string]!);
         const starts = tehranWallToUtc(date, slot.start_time);
@@ -242,7 +265,8 @@ export function offeringRoutes(app: FastifyInstance, db: Db) {
           }),
         );
       }
-      return { created: ids.length, ids };
+      }
+      return { created: ids.length, skipped, ids };
     });
   });
 

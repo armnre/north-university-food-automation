@@ -24,8 +24,8 @@ export default function EmployeesPage() {
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE));
   return (
     <>
-      <PageHeader title="اساتید" subtitle="اساتید هیئت علمی و مدعو با نام کاربری وارد می‌شوند و مثل دانشجو رزرو می‌کنند."
-        actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setBulk(true)}><Upload className="ms-1 h-4 w-4" />افزودن از فایل</Button><Button onClick={() => setEdit('new')}><Plus className="ms-1 h-4 w-4" />استاد جدید</Button></div>} />
+      <PageHeader title="کارکنان و اساتید" subtitle="کارکنان با شماره پرسنلی و اساتید با شماره کارگزینی (رمز: کد ملی) وارد می‌شوند و مثل دانشجو رزرو می‌کنند."
+        actions={<div className="flex gap-2"><Button variant="outline" onClick={() => setBulk(true)}><Upload className="ms-1 h-4 w-4" />افزودن از فایل</Button><Button onClick={() => setEdit('new')}><Plus className="ms-1 h-4 w-4" />نفر جدید</Button></div>} />
       <div className="mb-3 flex flex-wrap gap-2">{([['', 'همه'], ...Object.entries(EMP_KINDS)] as [string, string][]).map(([k, v]) => <Button key={k || 'all'} size="sm" variant={kind === k ? 'default' : 'outline'} onClick={() => { setKind(k); setPage(0); }}>{v}</Button>)}</div>
       <Input className="mb-4 max-w-sm" placeholder="جست‌وجوی نام، نام کاربری یا کد پرسنلی" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.employees.length ? <EmptyState title="استادی یافت نشد" /> : (

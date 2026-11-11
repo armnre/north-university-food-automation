@@ -16,6 +16,12 @@ import { DEFAULT_SETTINGS } from '../db/seed.js';
 
 const page = { offset: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(200).default(50) };
 const like = (s?: string) => (s ? `%${s.replace(/[%_\\]/g, (m) => `\\${m}`)}%` : null);
+const emptyToUndef = (v: unknown) => (v === '' || v === null ? undefined : v);
+/** National IDs arrive from Excel with lost leading zeros or Persian digits. */
+export const nidPassword = (v: string) => {
+  const d = normalizeDigits(String(v)).replace(/\D/g, '');
+  return d.length > 0 && d.length < 10 ? d.padStart(10, '0') : d;
+};
 const tempPassword = () => `${randomCode(5)}-${randomCode(5)}-${randomCode(4)}`;
 
 function staffRole(req: Parameters<typeof requirePrincipal>[0]): StaffRole {
@@ -67,9 +73,9 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     const p = requirePrincipal(req);
     const b = z
       .object({
-        studentNumber: z.string().max(30).optional(),
-        employeeUsername: z.string().max(50).optional(),
-        amountRial: z
+        studentNumber: z.preprocess(emptyToUndef, z.coerce.string().max(30).optional()),
+        employeeUsername: z.preprocess(emptyToUndef, z.coerce.string().max(50).optional()),
+        amountRial: z.coerce
           .number()
           .int()
           .refine((v) => v !== 0),
@@ -157,9 +163,9 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
         fullName: z.string().trim().min(2).max(100),
         role: z.enum(STAFF_ROLES),
         active: z.boolean(),
-        cafeteriaId: z.string().uuid().nullable().optional(),
-        contractorId: z.string().uuid().nullable().optional(),
-        mobile: z.string().max(20).optional(),
+        cafeteriaId: z.preprocess((v) => (v === '' ? null : v), z.string().uuid().nullable().optional()),
+        contractorId: z.preprocess((v) => (v === '' ? null : v), z.string().uuid().nullable().optional()),
+        mobile: z.preprocess(emptyToUndef, z.string().max(20).optional()),
         resetPassword: z.boolean().optional(),
       })
       .parse(req.body);
@@ -229,23 +235,27 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
 
   const empSchema = z.object({
     username: z
-      .string()
+      .preprocess((v) => (typeof v === 'number' ? String(v) : typeof v === 'string' ? normalizeDigits(v) : v), z.string())
+      .pipe(z.string()
       .trim()
       .min(3)
       .max(50)
-      .regex(/^[a-zA-Z0-9._-]+$/),
+      .regex(/^[a-zA-Z0-9._-]+$/)),
     firstName: z.string().trim().min(1).max(60),
     lastName: z.string().trim().min(1).max(60),
-    kind: z.enum(['Staff', 'Faculty', 'Contractor', 'Visiting']).default('Faculty'),
-    personnelCode: z.string().max(30).optional(),
-    mobile: z.string().max(20).optional(),
+    kind: z.preprocess(emptyToUndef, z.enum(['Staff', 'Faculty', 'Contractor', 'Visiting']).default('Faculty')),
+    personnelCode: z.preprocess(emptyToUndef, z.coerce.string().max(30).optional()),
+    mobile: z.preprocess(emptyToUndef, z.coerce.string().max(20).optional()),
+    /** When given, the national ID becomes the sign-in password (no forced change). */
+    nationalId: z.preprocess(emptyToUndef, z.coerce.string().max(20).optional()),
   });
   async function createEmployee(tx: Parameters<Parameters<Db['transaction']>[0]>[0], actorId: string, e: z.infer<typeof empSchema>) {
-    const temp = tempPassword();
+    const nid = e.nationalId ? nidPassword(e.nationalId) : null;
+    const temp = nid ? null : tempPassword();
     const r = await tx.execute<{
       id: string;
     }>(sql`INSERT INTO employees (username, first_name, last_name, kind, personnel_code, mobile, password_hash, must_change_password, created_by)
-      VALUES (${e.username}, ${e.firstName}, ${e.lastName}, ${e.kind}, ${e.personnelCode ?? null}, ${e.mobile ?? null}, ${await hashPassword(temp)}, true, ${actorId}) RETURNING id`);
+      VALUES (${e.username}, ${e.firstName}, ${e.lastName}, ${e.kind}, ${e.personnelCode ?? e.username}, ${e.mobile ?? null}, ${await hashPassword(nid ?? temp!)}, ${!nid}, ${actorId}) RETURNING id`);
     await tx.execute(sql`INSERT INTO accounts (kind, employee_id) VALUES ('Customer', ${r.rows[0]!.id})`);
     return { id: r.rows[0]!.id, temp };
   }
@@ -271,6 +281,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
           await tx.execute(sql`UPDATE employees SET username=${b.username}, first_name=${b.firstName}, last_name=${b.lastName}, kind=${kind}::employee_kind, personnel_code=${b.personnelCode ?? null}, mobile=${b.mobile ?? null}, active=${b.active},
           password_hash=COALESCE(${temp ? await hashPassword(temp) : null}, password_hash), must_change_password=(must_change_password OR ${!!temp}), updated_at=now() WHERE id=${id} RETURNING id`);
         if (!r.rows[0]) fail('NOT_FOUND', 'کارمند پیدا نشد.');
+        if (b.nationalId) await tx.execute(sql`UPDATE employees SET password_hash=${await hashPassword(nidPassword(b.nationalId))}, must_change_password=false WHERE id=${id}`);
         if (!b.active || temp) await revokeAllForSubject(tx as unknown as Db, 'employee', id);
       } else {
         try {
@@ -298,21 +309,29 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
   app.post('/api/v1/employees/bulk', { config: { access: 'employeesManage' } }, async (req) => {
     const p = requirePrincipal(req);
     if (!canManage(staffRole(req), 'Employee')) fail('FORBIDDEN', 'شما به این بخش دسترسی ندارید.');
-    const b = z.object({ rows: z.array(empSchema).min(1).max(300) }).parse(req.body);
+    const b = z.object({ rows: z.array(empSchema).min(1).max(1000), upsert: z.boolean().optional() }).parse(req.body);
     const dup = b.rows.map((r) => r.username.toLowerCase()).filter((u, i, a) => a.indexOf(u) !== i);
     if (dup.length) fail('BAD_REQUEST', `نام کاربری تکراری در فایل: ${[...new Set(dup)].slice(0, 5).join('، ')}`);
     return db.transaction(async (tx) => {
       const creds: string[] = ['username,full_name,temporary_password'];
+      let created = 0;
+      let updated = 0;
       for (const r of b.rows) {
-        try {
-          const c = await createEmployee(tx, p.id, r);
-          creds.push([r.username, `${r.firstName} ${r.lastName}`, c.temp].map(csvCell).join(','));
-        } catch (e) {
-          if ((e as { cause?: { code?: string } }).cause?.code === '23505') fail('CONFLICT', `نام کاربری «${r.username}» قبلاً وجود دارد. هیچ ردیفی ثبت نشد.`);
-          throw e;
+        const existing = await tx.execute<{ id: string }>(sql`SELECT id FROM employees WHERE lower(username)=${r.username.toLowerCase()} FOR UPDATE`);
+        const ex = existing.rows[0];
+        if (ex) {
+          if (!b.upsert) fail('CONFLICT', `نام کاربری «${r.username}» قبلاً وجود دارد. هیچ ردیفی ثبت نشد.`);
+          const nid = r.nationalId ? nidPassword(r.nationalId) : null;
+          await tx.execute(sql`UPDATE employees SET first_name=${r.firstName}, last_name=${r.lastName}, kind=${r.kind}::employee_kind, personnel_code=COALESCE(${r.personnelCode ?? null}, personnel_code),
+            mobile=COALESCE(${r.mobile ?? null}, mobile), active=true,
+            password_hash=COALESCE(${nid ? await hashPassword(nid) : null}, password_hash), must_change_password=CASE WHEN ${!!nid}::boolean THEN false ELSE must_change_password END, updated_at=now() WHERE id=${ex.id}`);
+          updated++;
+          continue;
         }
+        const c = await createEmployee(tx, p.id, r);
+        created++;
+        if (c.temp) creds.push([r.username, `${r.firstName} ${r.lastName}`, c.temp].map(csvCell).join(','));
       }
-      await audit(tx, { actor: p.actor, action: 'employee.bulk-create', entityType: 'Employee', data: { count: b.rows.length }, requestId: req.id });
       return { created: b.rows.length, credentialsCsv: '\ufeff' + creds.join('\n') };
     });
   });
@@ -626,8 +645,8 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       .object({
         title: z.string().trim().min(2).max(150),
         body: z.string().trim().min(2).max(2000),
-        studentNumber: z.string().max(20).optional(),
-        audience: z.enum(['all', 'students', 'employees']).default('all'),
+        studentNumber: z.preprocess(emptyToUndef, z.coerce.string().max(20).optional()),
+        audience: z.preprocess(emptyToUndef, z.enum(['all', 'students', 'employees']).default('all')),
       })
       .parse(req.body);
     let accountId: string | null = null;
@@ -674,25 +693,30 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     };
   });
 
+  // Lenient: the form round-trips whatever GET returned (strings, extra keys), so coerce and strip.
+  const zBool = z.preprocess((v) => (v === 'true' || v === 1 || v === '1' ? true : v === 'false' || v === 0 || v === '0' ? false : v), z.boolean());
+  const zInt = (min: number, max: number) => z.preprocess((v) => (typeof v === 'string' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(min).max(max));
+  const zText = (max: number) => z.preprocess((v) => (v == null ? '' : String(v)), z.string().max(max));
   const settingsSchema = z
     .object({
-      student_cancellation_enabled: z.boolean(),
-      cancel_cutoff_hours: z.number().int().min(0).max(168),
-      noshow_grace_minutes: z.number().int().min(0).max(240),
-      noshow_refund: z.boolean(),
-      scan_window_before_minutes: z.number().int().min(0).max(240),
-      scan_window_after_minutes: z.number().int().min(0).max(240),
-      min_gateway_payable_rial: z.number().int().min(10000).max(10_000_000),
-      online_payment_enabled: z.boolean(),
-      reminderHoursBeforeMeal: z.number().int().min(0).max(48),
-      max_manual_adjust_rial: z.number().int().min(0).max(1_000_000_000),
-      support_text: z.string().max(3000),
-      help_text: z.string().max(3000),
-      policy_text: z.string().max(5000),
+      student_cancellation_enabled: zBool,
+      cancel_cutoff_hours: zInt(0, 168),
+      noshow_grace_minutes: zInt(0, 240),
+      noshow_refund: zBool,
+      scan_window_before_minutes: zInt(0, 240),
+      scan_window_after_minutes: zInt(0, 240),
+      min_gateway_payable_rial: zInt(10000, 10_000_000),
+      online_payment_enabled: zBool,
+      reminderHoursBeforeMeal: zInt(0, 48),
+      max_manual_adjust_rial: zInt(0, 1_000_000_000),
+      support_text: zText(3000),
+      help_text: zText(3000),
+      policy_text: zText(5000),
     })
-    .partial()
-    .strict();
+    .partial();
 
+  // DB returns "12:00:00"; time inputs send "12:00".
+  const hhmm = z.preprocess((v) => (typeof v === 'string' ? normalizeDigits(v).slice(0, 5) : v), z.string().regex(/^[0-2]\d:[0-5]\d$/));
   app.put('/api/v1/settings', { config: { access: 'settingsWrite' } }, async (req) => {
     const p = requirePrincipal(req);
     const b = z
@@ -702,8 +726,8 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
           .array(
             z.object({
               code: z.enum(['breakfast', 'lunch', 'dinner']),
-              startTime: z.string().regex(/^[0-2]\d:[0-5]\d$/),
-              endTime: z.string().regex(/^[0-2]\d:[0-5]\d$/),
+              startTime: hhmm,
+              endTime: hhmm,
             }),
           )
           .optional(),

@@ -125,9 +125,11 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
 
   for (const kind of ['staff', 'employee'] as const) {
     app.post(`/api/v1/auth/${kind}/login`, { config: { access: 'public' } }, async (req, reply) => {
-      const b = z.object({ username: z.string().trim().max(50), password: z.string().max(128), ...captchaFields }).parse(req.body);
+      const b = z.object({ username: z.coerce.string().trim().max(50), password: z.string().max(128), kind: z.enum(['Staff', 'Faculty']).optional(), ...captchaFields }).parse(req.body);
+      // Employees sign in with personnel / kargozini number + national ID; accept Persian/Arabic digits.
+      if (kind === 'employee') b.password = normalizeDigits(b.password).trim();
       const ip = ipOf(req);
-      const uname = b.username.toLowerCase();
+      const uname = normalizeDigits(b.username).toLowerCase();
       const table = kind === 'staff' ? staffUsers : employees;
       let u: { id: string; passwordHash: string; active: boolean; mustChangePassword: boolean } | undefined;
       await guarded(kind, uname, ip, b, async () => {
@@ -137,6 +139,13 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
           .where(sql`lower(${table.username}) = ${uname}`)
           .limit(1);
         const ok = await verifyPassword(u?.passwordHash, b.password);
+        if (ok && u && kind === 'employee' && b.kind) {
+          const k = await db.execute<{ kind: string }>(sql`SELECT kind::text AS kind FROM employees WHERE id=${u.id}`);
+          const actual = k.rows[0]?.kind;
+          // Staff tab: Staff/Contractor; Faculty tab: Faculty/Visiting.
+          const fits = b.kind === 'Staff' ? actual === 'Staff' || actual === 'Contractor' : actual === 'Faculty' || actual === 'Visiting';
+          if (!fits) return false;
+        }
         return ok && !!u?.active;
       });
       await db.update(table).set({ lastLoginAt: new Date() }).where(eq(table.id, u!.id));

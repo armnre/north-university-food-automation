@@ -37,7 +37,7 @@ export const LEDGER_TYPES: Record<string, string> = {
   OnlinePayment: 'پرداخت اینترنتی', MANUAL_CASH: 'شارژ/برداشت نقدی', ManualAdjust: 'تعدیل دستی', ReservationDebit: 'کسر بابت رزرو', CancelRefund: 'بازپرداخت لغو', MealCancelledRefund: 'بازپرداخت لغو وعده', SoldOutRefund: 'بازپرداخت اتمام غذا', CapacityRefund: 'بازگشت رزرو ردشده',
 };
 export const ROLES: Record<string, string> = {
-  SuperAdmin: 'مدیر ارشد سامانه', StudentAffairs: 'معاونت دانشجویی', Contractor: 'پیمانکار تغذیه', Operator: 'اپراتور سلف', Finance: 'مسئول مالی',
+  SuperAdmin: 'مدیر ارشد سامانه', StudentAffairs: 'معاونت دانشجویی و فرهنگی', Contractor: 'پیمانکار تغذیه', Operator: 'اپراتور سلف', Finance: 'مسئول مالی',
 };
 export type Tone = 'info' | 'success' | 'muted' | 'warning' | 'danger';
 

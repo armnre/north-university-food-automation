@@ -25,8 +25,8 @@ describe('rbac & money', () => {
   it('SuperAdmin has no financeWrite', () => expect(hasPermission('SuperAdmin', 'financeWrite')).toBe(false));
   it('no role manages its own level', () => {
     expect(canManage('StudentAffairs', 'StudentAffairs' as never)).toBe(false);
-    expect(canManage('NutritionManager', 'Operator')).toBe(true);
-    expect(canManage('StudentAffairs', 'Operator')).toBe(false);
+    expect(canManage('Contractor', 'Operator')).toBe(true);
+    expect(canManage('Contractor', 'Contractor')).toBe(false);
   });
   it('parses rial strictly', () => {
     expect(parseRial('120000')).toBe(120000n);

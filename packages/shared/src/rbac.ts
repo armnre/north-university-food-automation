@@ -2,7 +2,7 @@
  * Single source of truth for RBAC. The API guards every route with requirePermission(),
  * the web menu reads the same matrix, and docs/RBAC.md is generated from it (npm run docs:rbac).
  */
-export const STAFF_ROLES = ['SuperAdmin', 'StudentAffairs', 'NutritionManager', 'Finance', 'Contractor', 'Operator'] as const;
+export const STAFF_ROLES = ['SuperAdmin', 'StudentAffairs', 'Finance', 'Contractor', 'Operator'] as const;
 export const CUSTOMER_ROLES = ['Student', 'Employee'] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 export type CustomerRole = (typeof CUSTOMER_ROLES)[number];
@@ -67,7 +67,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'staffManage',
     'auditRead',
   ],
-  NutritionManager: [
+  Finance: ['dashboardView', 'financeRead', 'financeWrite', 'reportsRead', 'reportsFinance', 'studentsRead'],
+  // پیمانکار تغذیه: کل عملیات غذا (به‌جای نقش حذف‌شده‌ی مدیر تغذیه).
+  Contractor: [
     'dashboardView',
     'catalogWrite',
     'menuWrite',
@@ -78,8 +80,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'notificationsSend',
     'staffManage',
   ],
-  Finance: ['dashboardView', 'financeRead', 'financeWrite', 'reportsRead', 'reportsFinance', 'studentsRead'],
-  Contractor: ['menuRead', 'reservationsRead', 'reportsRead'],
   Operator: ['deliveryScan', 'menuRead'],
   Student: ['selfService'],
   Employee: ['selfService'],
@@ -87,11 +87,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
 /** Which account kinds each staff role may create/edit. No role manages its own level or above. */
 export const CAN_MANAGE: Record<StaffRole, readonly (StaffRole | 'Employee')[]> = {
-  SuperAdmin: ['StudentAffairs', 'NutritionManager', 'Finance', 'Contractor', 'Operator', 'Employee'],
-  StudentAffairs: ['Employee'],
-  NutritionManager: ['Operator', 'Contractor'],
+  SuperAdmin: ['StudentAffairs', 'Finance', 'Contractor', 'Operator', 'Employee'],
+  // معاونت دانشجویی/فرهنگی پیمانکار و اپراتور سلف را تعیین می‌کند.
+  StudentAffairs: ['Employee', 'Contractor', 'Operator'],
   Finance: [],
-  Contractor: [],
+  Contractor: ['Operator'],
   Operator: [],
 };
 

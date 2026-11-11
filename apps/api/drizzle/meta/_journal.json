@@ -29,6 +29,13 @@
       "when": 1794200000000,
       "tag": "0003_faculty_visiting",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0004_remove_nutrition_manager",
+      "breakpoints": true
     }
   ]
 }

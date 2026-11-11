@@ -171,6 +171,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       .parse(req.body);
     if (!canManage(role, b.role)) fail('FORBIDDEN', 'شما اجازه‌ی ساخت یا ویرایش این نقش را ندارید.');
     if (b.role === 'Operator' && !b.cafeteriaId) fail('BAD_REQUEST', 'برای کارمند سلف باید سلف مشخص شود.');
+    if (b.role === 'Contractor' && !b.contractorId) fail('BAD_REQUEST', 'برای پیمانکار باید شرکت پیمانکار مشخص شود.');
     return db.transaction(async (tx) => {
       let temp: string | null = null;
       let id = b.id;

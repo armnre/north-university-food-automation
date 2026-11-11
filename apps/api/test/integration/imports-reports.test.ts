@@ -10,14 +10,14 @@ let nutrition: Client;
 let finance: Client;
 beforeAll(async () => {
   t = await testApp();
-  const login = async (role: 'StudentAffairs' | 'NutritionManager' | 'Finance', ip: string) => {
+  const login = async (role: 'StudentAffairs' | 'Contractor' | 'Finance', ip: string) => {
     const u = await makeStaff(t.db, role);
     const c = new Client(t.app, ip);
     await c.req('POST', '/api/v1/auth/staff/login', { username: u.username, password: STAFF_PASSWORD });
     return c;
   };
   affairs = await login('StudentAffairs', '10.40.0.1');
-  nutrition = await login('NutritionManager', '10.40.0.2');
+  nutrition = await login('Contractor', '10.40.0.2');
   finance = await login('Finance', '10.40.0.3');
 });
 afterAll(async () => {

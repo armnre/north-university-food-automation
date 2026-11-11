@@ -20,7 +20,7 @@ const as = async (role: Parameters<typeof makeStaff>[1], ip: string) => {
 describe('account hierarchy', () => {
   it('StudentAffairs creates only employees; NutritionManager only Operator/Contractor; nobody creates same/higher level', async () => {
     const sa = await as('StudentAffairs', '10.30.0.1');
-    const nm = await as('NutritionManager', '10.30.0.2');
+    const nm = await as('Contractor', '10.30.0.2');
     const su = await as('SuperAdmin', '10.30.0.3');
     const caf = (await t.db.execute<{ id: string }>(sql`SELECT id FROM cafeterias LIMIT 1`)).rows[0]!.id;
     const staff = (role: string, u: string) => ({ username: u, fullName: 'تست', role, active: true, cafeteriaId: caf });
@@ -28,7 +28,7 @@ describe('account hierarchy', () => {
     expect((await sa.req('PUT', '/api/v1/staff', staff('Operator', 'op-sa'))).status).toBe(403);
     expect((await sa.req('PUT', '/api/v1/employees', { username: 'emp.one', firstName: 'الف', lastName: 'ب' })).body.temporaryPassword).toBeTruthy();
     expect((await nm.req('PUT', '/api/v1/staff', staff('Operator', 'op-nm'))).status).toBe(200);
-    expect((await nm.req('PUT', '/api/v1/staff', staff('NutritionManager', 'nm2'))).status).toBe(403);
+    expect((await nm.req('PUT', '/api/v1/staff', staff('Contractor', 'nm2'))).status).toBe(403);
     expect((await nm.req('PUT', '/api/v1/staff', staff('Finance', 'fin-nm'))).status).toBe(403);
     expect((await su.req('PUT', '/api/v1/staff', staff('SuperAdmin', 'su2'))).status).toBe(403);
     expect((await su.req('PUT', '/api/v1/staff', staff('Finance', 'fin-su'))).status).toBe(200);
@@ -77,7 +77,7 @@ describe('finance', () => {
 describe('settings & students', () => {
   it('only SuperAdmin edits settings, with range validation and before/after audit', async () => {
     const su = await as('SuperAdmin', '10.32.0.1');
-    const nm = await as('NutritionManager', '10.32.0.2');
+    const nm = await as('Contractor', '10.32.0.2');
     expect((await nm.req('PUT', '/api/v1/settings', { values: { cancel_cutoff_hours: 6 } })).status).toBe(403);
     expect((await su.req('PUT', '/api/v1/settings', { values: { min_gateway_payable_rial: 5 } })).status).toBe(400);
     expect((await su.req('PUT', '/api/v1/settings', { values: { unknown_key: 1 } })).status).toBe(400);

@@ -129,7 +129,7 @@ describe('cancellation & sold-out', () => {
       await credit(t.db, s.account.id, 5_000n);
       await reserve(t.db, { accountId: s.account.id, group: 'Student', actor: 't' }, off, `so-${i}-${off}`);
     }
-    const nm = await makeStaff(t.db, 'NutritionManager');
+    const nm = await makeStaff(t.db, 'Contractor');
     const c = new Client(t.app, '10.22.0.1');
     await c.req('POST', '/api/v1/auth/staff/login', { username: nm.username, password: STAFF_PASSWORD });
     expect((await c.req('POST', `/api/v1/offerings/${off}/sold-out`, { reason: 'غذا تمام شد', confirm: 'no' })).status).toBe(400);

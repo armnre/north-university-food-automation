@@ -4,39 +4,44 @@ import { z } from 'zod';
 import type { Db } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { n } from '../lib/customer.js';
+import { normalizeDigits } from '@food/shared';
 import { fail } from '../lib/errors.js';
 import { audit } from '../services/audit.js';
 
 const MEAL = z.enum(['Breakfast', 'Lunch', 'Dinner']);
+const str = (max: number) => z.preprocess((v) => (v == null ? '' : String(v)), z.string().max(max));
+const undef = (v: unknown) => (v === '' || v === null ? undefined : v);
+const numOrNull = (max: number) =>
+  z.preprocess((v) => (v === '' || v === undefined ? null : typeof v === 'string' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(0).max(max).nullable().optional());
 const item = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('contractor'),
-    id: z.string().uuid().optional(),
+    id: z.preprocess(undef, z.string().uuid().optional()),
     name: z.string().trim().min(2).max(150),
-    contractNumber: z.string().max(80),
-    contactPhone: z.string().max(30),
-    active: z.boolean(),
+    contractNumber: str(80),
+    contactPhone: str(30),
+    active: z.boolean().default(true),
   }),
   z.object({
     kind: z.literal('cafeteria'),
-    id: z.string().uuid().optional(),
+    id: z.preprocess(undef, z.string().uuid().optional()),
     name: z.string().trim().min(2).max(150),
-    location: z.string().max(200),
-    contractorId: z.string().uuid().nullable(),
-    active: z.boolean(),
+    location: str(200),
+    contractorId: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.string().uuid().nullable()),
+    active: z.boolean().default(true),
   }),
   z.object({
     kind: z.literal('food'),
-    id: z.string().uuid().optional(),
+    id: z.preprocess(undef, z.string().uuid().optional()),
     name: z.string().trim().min(2).max(150),
-    description: z.string().max(1000),
-    active: z.boolean(),
-    category: z.string().max(60).optional(),
-    defaultPriceRial: z.number().int().min(0).max(100_000_000).nullable().optional(),
-    defaultCapacity: z.number().int().min(0).max(100_000).nullable().optional(),
-    suitableMeals: z.array(MEAL).optional(),
+    description: str(1000),
+    active: z.boolean().default(true),
+    category: z.preprocess(undef, z.string().max(60).optional()),
+    defaultPriceRial: numOrNull(100_000_000),
+    defaultCapacity: numOrNull(100_000),
+    suitableMeals: z.preprocess((v) => (v == null ? undefined : v), z.array(MEAL).optional()),
     imagePath: z.string().max(200).nullable().optional(),
-    imageUrl: z.string().max(300).optional(),
+    imageUrl: z.preprocess((v) => (v == null ? undefined : v), z.string().max(300).optional()),
   }),
 ]);
 

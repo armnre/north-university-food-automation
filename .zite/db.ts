@@ -14,9 +14,11 @@
 //       empty `notIn: []` applies no filter.
 //     sort: [{ field: "fieldName", direction: "asc" | "desc" }]
 //     limit defaults to 500, max 2000; offset is a row count (a number)
-//     a filter value of `undefined` is REJECTED (it would query unfiltered
-//       and match an arbitrary record). Check the value first.
+//     a filter value of `undefined` drops that filter and reads as if it weren't
+//       there. Check the value first: `{ owner: user?.id }` signed out reads every row.
 //   .findOne({ id?, filters?, fields? }) → T | undefined
+//     a filter value of `undefined`, or an `undefined` id with no filters, matches
+//       no record and returns undefined
 //   .create({ record }) → T
 //   .update({ id, record }) → { id: string, fields: Partial<T> }
 //   .delete({ id }) → { success: true, id: string }

@@ -1,3 +1,4 @@
+import logoUrl from "../assets/logo.png";
 import type { ReactNode } from 'react';
 import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
 import { Button } from '@project/components/ui/button';
@@ -7,7 +8,7 @@ import type { Tone } from '../lib/format';
 
 /** App logo (generated). */
 export function Emblem({ className }: { className?: string }) {
-  return <img src="https://images.fillout.com/897142/thgnrgdvdc/generated-images/csmL29ZvYgCZwXYUTkJPuL/img_ikYUIdBmTklcxgXy.jpg" alt="لوگوی سامانه تغذیه" className={cn('h-9 w-9 rounded-[11px] object-cover shadow-sm', className)} />;
+  return <img src={logoUrl} alt="لوگوی دانشگاه شمال" className={cn('h-9 w-9 rounded-[11px] bg-white object-contain p-0.5 shadow-sm', className)} />;
 }
 
 const toneCls: Record<Tone, string> = {

@@ -13,7 +13,7 @@ import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
 
 type N = { id: string; title: string; body: string; audience: string; createdAt: string; studentNumber: string | null };
-const AUD: Record<string, string> = { all: 'همگانی', students: 'دانشجویان', employees: 'اساتید', personal: 'شخصی' };
+const AUD: Record<string, string> = { all: 'همگانی', students: 'دانشجویان', employees: 'کارکنان و اساتید', personal: 'شخصی' };
 
 export default function NotifyPage() {
   const { token } = useSession();

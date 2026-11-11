@@ -1,3 +1,4 @@
+import JalaliDateInput from '../../components/JalaliDateInput';
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Users, ArrowUpDown, CalendarPlus, Copy } from 'lucide-react';
 import { CopyMenuDialog, DayMenuBuilder } from '../../components/MenuTools';
@@ -23,8 +24,8 @@ type SortKey = 'serviceDate' | 'foodName' | 'priceRial' | 'remaining';
 
 function defaultsFor(date: string, meal: string) {
   const hour = meal === 'Breakfast' ? '07:00' : meal === 'Lunch' ? '12:00' : '19:00';
-  const prev = addDays(date, -1);
-  return { reserveDeadline: `${prev}T20:00`, cancelDeadline: `${prev}T22:00`, _hour: hour };
+  const prev = addDays(date, -1), before48 = addDays(date, -2);
+  return { reserveDeadline: `${before48}T${hour}`, cancelDeadline: `${prev}T22:00`, _hour: hour };
 }
 
 export default function OfferingsPage() {
@@ -154,7 +155,7 @@ export default function OfferingsPage() {
           <DialogHeader><DialogTitle>{form?.id ? 'ویرایش وعده' : 'وعده‌ی جدید'}</DialogTitle>{form?.orig && form.orig.reserved > 0 && <DialogDescription>این وعده {faNum(form.orig.reserved)} رزرو دارد؛ تاریخ، وعده و سلف قفل است و تغییر قیمت فقط برای رزروهای بعدی اعمال می‌شود.</DialogDescription>}</DialogHeader>
           {form && data && (
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label>تاریخ ارائه</Label><Input type="date" dir="ltr" value={form.serviceDate} disabled={!!form.orig?.reserved} onChange={(e) => setForm({ ...form, serviceDate: e.target.value })} /><p className="text-xs text-muted-foreground">{faDate(form.serviceDate)}</p></div>
+              <div className="space-y-1.5"><Label>تاریخ ارائه</Label><JalaliDateInput   value={form.serviceDate} disabled={!!form.orig?.reserved} onChange={(v) => setForm({ ...form, serviceDate: v })} /><p className="text-xs text-muted-foreground">{faDate(form.serviceDate)}</p></div>
               <div className="space-y-1.5"><Label>وعده</Label><Select value={form.mealType} disabled={!!form.orig?.reserved} onValueChange={(v) => setForm({ ...form, mealType: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(MEALS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>غذا</Label><Select value={form.foodId || undefined} onValueChange={(v) => { const fd = data.catalog.foods.find((x) => x.id === v); setForm({ ...form, foodId: v, priceRial: form.priceRial || (fd?.defaultPriceRial != null ? String(fd.defaultPriceRial) : ''), capacity: form.capacity || (fd?.defaultCapacity != null ? String(fd.defaultCapacity) : '') }); }}><SelectTrigger><SelectValue placeholder="انتخاب غذا" /></SelectTrigger><SelectContent>{data.catalog.foods.filter((f) => f.active || f.id === form.foodId).map((f) => <SelectItem key={f.id} value={f.id}>{f.name}{f.isDemo ? ' (نمایشی)' : ''}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>قیمت (ریال)</Label><Input inputMode="numeric" dir="ltr" value={form.priceRial} onChange={(e) => setForm({ ...form, priceRial: e.target.value.replace(/\D/g, '') })} />{form.priceRial && <p className="text-xs text-muted-foreground">{rial(Number(form.priceRial))}</p>}</div>

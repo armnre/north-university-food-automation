@@ -63,6 +63,7 @@ export const adminStudentReport = (i: In) => request('GET', '/admin/students/:st
 export const adminStudentStatus = (i: In) => request('PATCH', '/admin/students/:studentId/status', i);
 export const auditList = ep('GET', '/audit');
 // catalog / offerings
+export const publicInfo = ep('GET', '/public/info');
 export const catalogList = ep('GET', '/catalog');
 export const catalogSave = ep('PUT', '/catalog');
 export const catalogDelete = (i: In) => request('DELETE', '/catalog/:kind/:id', i);

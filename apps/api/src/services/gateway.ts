@@ -4,7 +4,8 @@ export type VerifyResult = { code: number; refId?: string; cardPan?: string };
 export interface PaymentGateway {
   readonly name: string;
   request(input: { amountRial: bigint; description: string; callbackUrl: string; mobile?: string }): Promise<{ authority: string }>;
-  verify(input: { amountRial: bigint; authority: string }): Promise<VerifyResult>;
+  /** refNum: Saman's RefNum from the callback (required by Saman, ignored by Zarinpal). */
+  verify(input: { amountRial: bigint; authority: string; refNum?: string }): Promise<VerifyResult>;
   startPayUrl(authority: string): string;
 }
 
@@ -51,9 +52,72 @@ export class ZarinpalGateway implements PaymentGateway {
   }
 }
 
+/**
+ * Saman Kish (SEP) — https://sep.shaparak.ir, token-based IPG.
+ * 1) POST /onlinepg/onlinepg {action:'token', TerminalId, Amount(IRR), ResNum, RedirectUrl, CellNumber} → {status:1, token}
+ * 2) Browser → GET /OnlinePG/SendToken?token=…  (token valid ~20 min)
+ * 3) Saman POSTs (form) back to RedirectUrl: State, Status(2 = OK), RefNum, ResNum, Token, Amount, Rrn, SecurePan…
+ * 4) Server POST /verifyTxnRandomSessionkey/ipg/VerifyTransaction {RefNum, TerminalNumber} → ResultCode 0 (ok) / 2 (already verified).
+ *    Saman authenticates these calls by the server's whitelisted IP; unverified payments are auto-reversed by Saman after ~30 min.
+ * Verified amount must equal the requested amount; otherwise the transaction is reversed and treated as failed.
+ */
+export class SamanGateway implements PaymentGateway {
+  readonly name = 'saman';
+  private base = 'https://sep.shaparak.ir';
+  constructor(private terminalId: string) {}
+  private async post<T>(url: string, body: unknown): Promise<T> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`saman http ${res.status}`);
+    return (await res.json()) as T;
+  }
+  async request(i: { amountRial: bigint; description: string; callbackUrl: string; mobile?: string; resNum?: string }) {
+    const url = new URL(i.callbackUrl);
+    const resNum = i.resNum ?? url.searchParams.get('pid') ?? crypto.randomUUID();
+    url.search = '';
+    const r = await this.post<{ status?: number; token?: string; errorCode?: string; errorDesc?: string }>(`${this.base}/onlinepg/onlinepg`, {
+      action: 'token',
+      TerminalId: this.terminalId,
+      Amount: Number(i.amountRial),
+      ResNum: resNum,
+      RedirectUrl: url.toString(),
+      ...(i.mobile ? { CellNumber: i.mobile } : {}),
+    });
+    if (r.status !== 1 || !r.token) throw new Error(`saman token failed (${r.errorCode ?? 'unknown'}: ${r.errorDesc ?? ''})`);
+    return { authority: r.token };
+  }
+  async verify(i: { amountRial: bigint; authority: string; refNum?: string }): Promise<VerifyResult> {
+    if (!i.refNum) throw new Error('saman: RefNum not received yet');
+    const body = { RefNum: i.refNum, TerminalNumber: Number(this.terminalId) };
+    const r = await this.post<{ ResultCode?: number; Success?: boolean; TransactionDetail?: { RRN?: string; RefNum?: string; MaskedPan?: string; OrginalAmount?: number; AffectiveAmount?: number } }>(
+      `${this.base}/verifyTxnRandomSessionkey/ipg/VerifyTransaction`,
+      body,
+    );
+    const d = r.TransactionDetail ?? {};
+    const okCode = r.ResultCode === 0 || r.ResultCode === 2;
+    if (!okCode) return { code: -(Math.abs(r.ResultCode ?? 1) + 1000) };
+    if (Number(d.OrginalAmount ?? d.AffectiveAmount) !== Number(i.amountRial)) {
+      await this.post(`${this.base}/verifyTxnRandomSessionkey/ipg/ReverseTransaction`, body).catch(() => undefined);
+      return { code: -2000 };
+    }
+    return { code: r.ResultCode === 0 ? 100 : 101, refId: d.RRN || i.refNum, cardPan: d.MaskedPan };
+  }
+  startPayUrl(authority: string) {
+    return `${this.base}/OnlinePG/SendToken?token=${encodeURIComponent(authority)}`;
+  }
+}
+
 /** Returns null when online payment is disabled. Env validation already forbids sandbox in production. */
 export function gatewayFromEnv(env: Env): PaymentGateway | null {
   if (!env.ONLINE_PAYMENT_ENABLED) return null;
+  if (env.PAYMENT_PROVIDER === 'saman') {
+    if (!env.SAMAN_TERMINAL_ID) throw new Error('SAMAN_TERMINAL_ID missing');
+    return new SamanGateway(env.SAMAN_TERMINAL_ID);
+  }
   if (env.ALLOW_SANDBOX_GATEWAY && env.NODE_ENV !== 'production')
     return new ZarinpalGateway(env.ZARINPAL_MERCHANT_ID ?? '00000000-0000-0000-0000-000000000000', true);
   if (!env.ZARINPAL_MERCHANT_ID) throw new Error('ZARINPAL_MERCHANT_ID missing');

@@ -1,3 +1,4 @@
+import { getSettings, num as settingNum } from '../services/settings.js';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -24,7 +25,7 @@ const saveSchema = z.object({
   priceRial: z.preprocess(undef, rialN.optional()), // "one price for all"
   prices: z.preprocess(undef, z.object({ Student: z.preprocess(undef, rialN.optional()), Employee: z.preprocess(undef, rialN.optional()) }).optional()),
   capacity: z.preprocess(num, z.number().int().min(1).max(100_000)),
-  reserveDeadline: z.string().datetime({ offset: true }),
+  reserveDeadline: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.string().datetime({ offset: true }).optional()),
   cancelDeadline: z.preprocess((v) => (v === '' ? null : v), z.string().datetime({ offset: true }).optional().nullable()),
   // Bulk menu builder omits it: a new menu item is published by default.
   active: z.preprocess((v) => (v === undefined || v === null ? true : v === 'false' ? false : v === 'true' ? true : v), z.boolean()),
@@ -56,7 +57,10 @@ export async function saveOffering(tx: Tx, actor: string, b: SaveOffering) {
   const slot = await slotTimes(tx, b.mealType);
   const starts = tehranWallToUtc(b.serviceDate, slot.start_time);
   const ends = tehranWallToUtc(b.serviceDate, slot.end_time);
-  const deadline = new Date(b.reserveDeadline);
+  // Default: reservations close `reserve_hours_before_meal` (48h) before the meal starts.
+  const deadline = b.reserveDeadline
+    ? new Date(b.reserveDeadline)
+    : new Date(starts.getTime() - settingNum(await getSettings(tx), 'reserve_hours_before_meal') * 3600_000);
   if (deadline > starts) fail('BAD_REQUEST', 'مهلت رزرو باید قبل از شروع وعده باشد.');
   const prices = { Student: b.prices?.Student ?? b.priceRial, Employee: b.prices?.Employee ?? b.priceRial };
   if (prices.Student == null && prices.Employee == null) fail('BAD_REQUEST', 'حداقل یک قیمت لازم است.');
@@ -155,7 +159,7 @@ export function offeringRoutes(app: FastifyInstance, db: Db) {
     const from = q.from ?? tehranDate();
     const to = q.to ?? addDays(from, 7);
     const cafeteria = p.role === 'Operator' ? p.cafeteriaId : (q.cafeteriaId ?? null);
-    const contractor = p.role === 'Contractor' ? p.contractorId : null;
+    const contractor = null; // single central cafeteria — no per-contractor scoping
     const r = await db.execute<Record<string, unknown>>(sql`
       SELECT o.id, o.service_date, ms.code AS slot, o.food_id, f.name AS food_name, f.description AS food_description, o.cafeteria_id, cf.name AS cafeteria_name,
         o.capacity, o.reserved_count, o.status, o.reserve_deadline, o.cancel_deadline, o.notes,

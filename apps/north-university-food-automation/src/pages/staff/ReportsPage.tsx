@@ -1,3 +1,4 @@
+import JalaliDateInput from '../../components/JalaliDateInput';
 import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { catalogList, reportsSummary } from '../../lib/api';
@@ -27,10 +28,10 @@ export default function ReportsPage({ contractor }: { contractor?: boolean }) {
   const exportCsv = () => data && downloadCsv('report.csv', ['تاریخ', 'وعده', 'سلف', 'غذا', 'ظرفیت', 'رزرو', 'تحویل', 'لغو', 'عدم مراجعه', 'ارزش (ریال)'], data.rows.map((r) => [r.date, MEALS[r.meal] ?? r.meal, r.cafeteria, r.food, r.capacity, r.reserved, r.delivered, r.cancelled, r.noShow, r.valueRial]));
   return (
     <>
-      <PageHeader title={contractor ? 'گزارش پیمانکار' : 'گزارش‌های عملیاتی و مالی'} subtitle={contractor ? 'فقط سلف‌های مربوط به قرارداد شما نمایش داده می‌شود. اطلاعات هویتی دانشجویان در این گزارش وجود ندارد.' : 'ارزش رزروها بر اساس قیمت لحظه‌ی رزرو محاسبه می‌شود.'} actions={<Button variant="outline" onClick={exportCsv} disabled={!data?.rows.length}><Download className="ms-1 h-4 w-4" />خروجی CSV</Button>} />
+      <PageHeader title={contractor ? 'گزارش وعده‌ها' : 'گزارش‌های عملیاتی و مالی'} subtitle={contractor ? 'آمار رزرو و تحویل وعده‌های سلف مرکزی. اطلاعات هویتی دانشجویان در این گزارش وجود ندارد.' : 'ارزش رزروها بر اساس قیمت لحظه‌ی رزرو محاسبه می‌شود.'} actions={<Button variant="outline" onClick={exportCsv} disabled={!data?.rows.length}><Download className="ms-1 h-4 w-4" />خروجی CSV</Button>} />
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <Input type="date" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="از تاریخ" />
-        <Input type="date" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} aria-label="تا تاریخ" />
+        <JalaliDateInput   value={from} onChange={(v) => setFrom(v)} aria-label="از تاریخ" />
+        <JalaliDateInput   value={to} onChange={(v) => setTo(v)} aria-label="تا تاریخ" />
         <Select value={meal} onValueChange={setMeal}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی وعده‌ها</SelectItem>{Object.entries(MEALS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select>
         {!contractor && <Select value={caf} onValueChange={setCaf}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی سلف‌ها</SelectItem>{cat.data?.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>}
       </div>

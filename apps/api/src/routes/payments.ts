@@ -12,7 +12,27 @@ import { postLedger, systemAccountId } from '../services/ledger.js';
 import { settlePayment, startCheckout } from '../services/payments.js';
 
 export function paymentRoutes(app: FastifyInstance, db: Db, env: Env, gw: PaymentGateway | null) {
-  const callbackUrl = `${env.PUBLIC_BASE_URL}/api/v1/payments/zarinpal/callback`;
+  const callbackUrl = `${env.PUBLIC_BASE_URL}/api/v1/payments/${gw?.name === 'saman' ? 'saman' : 'zarinpal'}/callback`;
+
+  // Saman posts the result as an HTML form (cross-site), so this route parses urlencoded bodies and skips CSRF.
+  if (!app.hasContentTypeParser('application/x-www-form-urlencoded'))
+    app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 16_384 }, (_req, body, done) =>
+      done(null, Object.fromEntries(new URLSearchParams(String(body)))),
+    );
+  const samanCallback = async (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => {
+    const src = { ...(req.query as object), ...((req.body as object) ?? {}) } as Record<string, unknown>;
+    const q = z
+      .object({ ResNum: z.string().uuid(), Token: z.string().max(200).optional(), RefNum: z.string().max(100).optional(), Status: z.coerce.string().max(10).optional() })
+      .safeParse(src);
+    if (!q.success) return reply.redirect(`${env.PUBLIC_BASE_URL}/payment/result?error=1`, 303);
+    const pid = q.data.ResNum;
+    if (gw && q.data.RefNum) await settlePayment(db, gw, pid, q.data.Token ?? null, q.data.RefNum).catch((e) => req.log.error({ err: e, pid }, 'settle failed'));
+    else if (gw)
+      await db.execute(sql`UPDATE payments SET status='Failed', gateway_code=${Number(q.data.Status) || -1}, review_note='cancelled at gateway', updated_at=now() WHERE id=${pid} AND status='Pending'`);
+    return reply.redirect(`${env.PUBLIC_BASE_URL}/payment/result?pid=${pid}`, 303);
+  };
+  app.post('/api/v1/payments/saman/callback', { config: { access: 'public', skipCsrf: true } }, samanCallback);
+  app.get('/api/v1/payments/saman/callback', { config: { access: 'public' } }, samanCallback);
 
   app.post('/api/v1/payments/checkout/start', { config: { access: 'selfService', rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const c = await currentCustomer(db, req);

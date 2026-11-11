@@ -52,14 +52,14 @@ export default function CatalogPage() {
       <PageHeader title="سلف و پیمانکار" subtitle="رکوردها حذف نمی‌شوند؛ برای خارج کردن از چرخه، غیرفعال کنید." />
       <Input className="mb-4 h-11 rounded-xl sm:max-w-sm" placeholder="جست‌وجو با نام" value={q} onChange={(e) => setQ(e.target.value)} />
       <Tabs defaultValue="cafeteria">
-        <TabsList className="mb-4 grid h-12 w-full grid-cols-2 rounded-2xl p-1 sm:w-72"><TabsTrigger className="rounded-xl" value="cafeteria">سلف‌ها</TabsTrigger><TabsTrigger className="rounded-xl" value="contractor">پیمانکاران</TabsTrigger></TabsList>
+        
         <TabsContent value="food" className="space-y-2">
           <Button className="mb-1 h-11 w-full rounded-xl sm:w-auto" onClick={() => setItem({ kind: 'food', name: '', description: '', active: true, isDemo: false })}><Plus className="ms-1 h-4 w-4" />غذای جدید</Button>
           {f(data.foods).length === 0 ? <EmptyState title="غذایی تعریف نشده است" /> : f(data.foods).map((x) => <Row key={x.id} title={x.name} sub={x.description} active={x.active} extra={x.isDemo ? <Pill tone="warning">نمایشی</Pill> : null} onEdit={() => setItem({ kind: 'food', id: x.id, name: x.name, description: x.description, active: x.active, isDemo: x.isDemo })} />)}
         </TabsContent>
         <TabsContent value="cafeteria" className="space-y-2">
           <Button className="mb-1 h-11 w-full rounded-xl sm:w-auto" onClick={() => setItem({ kind: 'cafeteria', name: '', location: '', contractorId: null, active: true })}><Plus className="ms-1 h-4 w-4" />سلف جدید</Button>
-          {f(data.cafeterias).length === 0 ? <EmptyState title="سلفی تعریف نشده است" /> : f(data.cafeterias).map((x) => <Row key={x.id} title={x.name} sub={[x.location, x.contractorName && `پیمانکار: ${x.contractorName}`].filter(Boolean).join(' · ')} active={x.active} onEdit={() => setItem({ kind: 'cafeteria', id: x.id, name: x.name, location: x.location, contractorId: x.contractorId, active: x.active })} />)}
+          {f(data.cafeterias).length === 0 ? <EmptyState title="سلفی تعریف نشده است" /> : f(data.cafeterias).map((x) => <Row key={x.id} title={x.name} sub={[x.location, ].filter(Boolean).join(' · ')} active={x.active} onEdit={() => setItem({ kind: 'cafeteria', id: x.id, name: x.name, location: x.location, contractorId: x.contractorId, active: x.active })} />)}
         </TabsContent>
         <TabsContent value="contractor" className="space-y-2">
           <Button className="mb-1 h-11 w-full rounded-xl sm:w-auto" onClick={() => setItem({ kind: 'contractor', name: '', contractNumber: '', contactPhone: '', active: true })}><Plus className="ms-1 h-4 w-4" />پیمانکار جدید</Button>
@@ -78,7 +78,7 @@ export default function CatalogPage() {
               </>}
               {item.kind === 'cafeteria' && <>
                 <div className="space-y-1.5"><Label>محل</Label><Input value={item.location} onChange={(e) => setItem({ ...item, location: e.target.value })} /></div>
-                <div className="space-y-1.5"><Label>پیمانکار</Label><Select value={item.contractorId ?? undefined} onValueChange={(v) => setItem({ ...item, contractorId: v })}><SelectTrigger><SelectValue placeholder="انتخاب پیمانکار" /></SelectTrigger><SelectContent>{data.contractors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                
               </>}
               {item.kind === 'contractor' && <>
                 <div className="space-y-1.5"><Label>شماره قرارداد</Label><Input value={item.contractNumber} onChange={(e) => setItem({ ...item, contractNumber: e.target.value })} /></div>

@@ -31,7 +31,6 @@ function scope(req: FastifyRequest, f: F): SQL {
   const parts: SQL[] = [sql`o.service_date BETWEEN ${f.from}::date AND ${f.to}::date`];
   if (f.cafeteriaId) parts.push(sql`o.cafeteria_id = ${f.cafeteriaId}`);
   if (f.mealType) parts.push(sql`lower(ms.code) = lower(${f.mealType})`);
-  if (p.role === 'Contractor') parts.push(sql`c.contractor_id = ${p.contractorId ?? '00000000-0000-0000-0000-000000000000'}`);
   return sql.join(parts, sql` AND `);
 }
 
@@ -72,7 +71,7 @@ async function summary(db: Db, req: FastifyRequest, f: F) {
       noShow: sum('noShow'),
       valueRial: sum('valueRial'),
     },
-    scopedToContractor: requirePrincipal(req).role === 'Contractor',
+    scopedToContractor: false,
   };
 }
 

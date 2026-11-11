@@ -21,6 +21,7 @@ const HEAD = `
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="تغذیه شمال" />
+    ${process.env.VITE_ENAMAD_META ? `<meta name="enamad" content="${process.env.VITE_ENAMAD_META.replace(/[^0-9A-Za-z]/g, '')}" />` : ''}
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />

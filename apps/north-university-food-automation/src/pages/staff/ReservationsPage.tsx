@@ -1,3 +1,4 @@
+import JalaliDateInput from '../../components/JalaliDateInput';
 import { useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { Download } from 'lucide-react';
@@ -28,8 +29,8 @@ export default function ReservationsPage() {
     <>
       <PageHeader title="مدیریت رزروها" actions={<Button variant="outline" onClick={exportCsv} disabled={!data?.reservations.length}><Download className="ms-1 h-4 w-4" />خروجی CSV</Button>} />
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <Input type="date" dir="ltr" value={from} onChange={(e) => { setFrom(e.target.value); setPage(0); }} aria-label="از تاریخ" />
-        <Input type="date" dir="ltr" value={to} onChange={(e) => { setTo(e.target.value); setPage(0); }} aria-label="تا تاریخ" />
+        <JalaliDateInput   value={from} onChange={(v) => { setFrom(v); setPage(0); }} aria-label="از تاریخ" />
+        <JalaliDateInput   value={to} onChange={(v) => { setTo(v); setPage(0); }} aria-label="تا تاریخ" />
         <Select value={status} onValueChange={(v) => { setStatus(v); setPage(0); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی وضعیت‌ها</SelectItem>{Object.entries(RES_STATUS).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent></Select>
         <Select value={caf} onValueChange={(v) => { setCaf(v); setPage(0); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی سلف‌ها</SelectItem>{cat.data?.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
         <Input placeholder="شماره دانشجویی، نام یا کد" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />

@@ -91,7 +91,7 @@ export async function startCheckout(db: Db, gw: PaymentGateway | null, c: Custom
  * The payment row is locked for the whole verify+credit step so concurrent callbacks settle once.
  * Verified-but-ledger-failed ⇒ NeedsReview (+ audit alert); no path credits money without a verified payment.
  */
-export async function settlePayment(db: Db, gw: PaymentGateway, paymentId: string, authority: string | null) {
+export async function settlePayment(db: Db, gw: PaymentGateway, paymentId: string, authority: string | null, refNum?: string) {
   let verified: { ok: boolean; code: number; refId?: string; cardPan?: string } | null = null;
   let customer: Customer | null = null;
   let items: Item[] = [];
@@ -105,7 +105,7 @@ export async function settlePayment(db: Db, gw: PaymentGateway, paymentId: strin
       if (!p) fail('NOT_FOUND', 'پرداخت پیدا نشد.');
       if (p.status !== 'Pending') return { already: true as const, status: p.status };
       if (!p.authority || (authority && authority !== p.authority)) fail('BAD_REQUEST', 'اطلاعات بازگشت از درگاه نامعتبر است.');
-      const v = await gw.verify({ amountRial: BigInt(p.amount_rial), authority: p.authority });
+      const v = await gw.verify({ amountRial: BigInt(p.amount_rial), authority: p.authority, refNum });
       verified = { ok: v.code === 100 || v.code === 101, ...v };
       if (!verified.ok) {
         await tx.execute(sql`UPDATE payments SET status='Failed', gateway_code=${v.code}, updated_at=now() WHERE id=${p.id}`);

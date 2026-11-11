@@ -1,3 +1,4 @@
+import SiteFooter from '../components/SiteFooter';
 import { useEffect, useState } from 'react';
 import { Loader2, GraduationCap, Building2, BadgeCheck, Lock } from 'lucide-react';
 import { authEmployeeLogin, authSetupAdmin, authSetupStatus, authStaffLogin, authStudentLogin } from '../lib/api';
@@ -164,6 +165,7 @@ export default function LoginPage() {
           <Lock className="h-3.5 w-3.5" />اطلاعات شما محرمانه است و کد ملی در هیچ گزارشی نمایش داده نمی‌شود.
         </div>
         <p className="mt-2 text-center text-[11px] text-muted-foreground">© {new Intl.DateTimeFormat('fa-IR', { year: 'numeric' }).format(new Date())} — اداره تغذیه دانشگاه شمال</p>
+        <SiteFooter />
       </main>
     </div>
   );

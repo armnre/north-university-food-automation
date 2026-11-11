@@ -21,6 +21,7 @@ const TOGGLES: [string, string, string][] = [
   ['noshow_refund', 'بازپرداخت عدم مراجعه', 'رزرو تحویل‌نشده پس از پایان وعده بازپرداخت شود.'],
 ];
 const NUMBERS: [string, string, string][] = [
+  ['reserve_hours_before_meal', 'مهلت پیش‌فرض رزرو (ساعت پیش از وعده)', 'پیش‌فرض ۴۸ ساعت'],
   ['cancel_cutoff_hours', 'مهلت لغو (ساعت پیش از وعده)', '۰ تا ۱۶۸'],
   ['noshow_grace_minutes', 'مهلت عدم مراجعه (دقیقه پس از وعده)', '۰ تا ۲۴۰'],
   ['scan_window_before_minutes', 'اسکن از چند دقیقه قبل از وعده', '۰ تا ۲۴۰'],

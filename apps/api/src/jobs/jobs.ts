@@ -29,6 +29,15 @@ export async function reconcilePendingPayments(db: Db, gw: PaymentGateway | null
       }
       continue;
     }
+    if (gw.name === 'saman') {
+      // Saman needs the RefNum from the browser callback; without it the payment can't be verified and
+      // Saman reverses it automatically (~30 min), so after an hour it is safe to mark it failed.
+      if (r.age_min > 60) {
+        await db.execute(sql`UPDATE payments SET status='Failed', review_note='no callback from Saman (auto-reversed by bank)', updated_at=now() WHERE id=${r.id} AND status='Pending'`);
+        out.failed++;
+      }
+      continue;
+    }
     try {
       const s = await settlePayment(db, gw, r.id, null);
       if (s.status === 'Paid') out.paid++;

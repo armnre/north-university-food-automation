@@ -36,7 +36,7 @@ export default function UsersPage() {
       setForm(null); reload();
     } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
-  const valid = form && /^[a-zA-Z0-9._-]{3,50}$/.test(form.username) && form.fullName.trim().length >= 2 && (form.role !== 'Operator' || !!form.cafeteriaId) && (form.role !== 'Contractor' || !!form.contractorId);
+  const valid = form && /^[a-zA-Z0-9._-]{3,50}$/.test(form.username) && form.fullName.trim().length >= 2;
   const newForm = (): Form => ({ username: '', fullName: '', role: roles[0] ?? 'Operator', active: true, cafeteriaId: '', contractorId: '', mobile: '', resetPassword: false });
   return (
     <>
@@ -70,8 +70,7 @@ export default function UsersPage() {
                 <div className="space-y-1.5"><Label>نقش</Label><Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{roles.filter((r) => r !== 'Employee').map((k) => <SelectItem key={k} value={k}>{ROLES[k] ?? k}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label>موبایل (اختیاری)</Label><Input dir="ltr" inputMode="tel" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /></div>
               </div>
-              <div className="space-y-1.5"><Label>سلف {form.role === 'Operator' ? '(الزامی)' : '(اختیاری)'}</Label><Select value={form.cafeteriaId || NONE} onValueChange={(v) => setForm({ ...form, cafeteriaId: v === NONE ? '' : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NONE}>—</SelectItem>{data.cafeterias.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-              {form.role === 'Contractor' && <div className="space-y-1.5"><Label>پیمانکار (الزامی)</Label><Select value={form.contractorId || NONE} onValueChange={(v) => setForm({ ...form, contractorId: v === NONE ? '' : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NONE}>—</SelectItem>{data.contractors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>}
+              
               {form.id && (
                 <div className="grid gap-2 rounded-lg border p-3 text-sm">
                   <label className="flex items-center justify-between">فعال<Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} /></label>

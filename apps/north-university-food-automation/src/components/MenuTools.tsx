@@ -1,3 +1,4 @@
+import JalaliDateInput from './JalaliDateInput';
 import { useEffect, useState } from 'react';
 import { CalendarPlus, Check, Copy, Loader2, Minus, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,7 +9,7 @@ import { Label } from '@project/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@project/components/ui/dialog';
 import { cn } from '@project/components/lib/utils';
 import { ErrorNote } from './ui-kit';
-import { MEALS, addDays, errMsg, faDate, faNum, rial, tehranLocalToIso } from '../lib/format';
+import { MEALS, addDays, errMsg, faDate, faNum, rial } from '../lib/format';
 import type { Catalog } from '../lib/types';
 
 type Line = { key: string; mealType: string; foodId: string; priceRial: string; capacity: string };
@@ -22,7 +23,6 @@ export function DayMenuBuilder({ open, onClose, onDone, token, catalog, initialD
   const [days, setDays] = useState(1);
   const [meal, setMeal] = useState('Lunch');
   const [lines, setLines] = useState<Line[]>([]);
-  const [reserveTime, setReserveTime] = useState('20:00');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => { if (open) { setDate(initialDate); setLines([]); setErr(''); setDays(1); setMeal('Lunch'); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -43,8 +43,8 @@ export function DayMenuBuilder({ open, onClose, onDone, token, catalog, initialD
     setBusy(true); setErr('');
     try {
       const items = Array.from({ length: days }).flatMap((_, i) => {
-        const d = addDays(date, i), prev = addDays(d, -1);
-        return lines.map((l) => ({ serviceDate: d, mealType: l.mealType as 'Lunch', foodId: l.foodId, priceRial: Number(l.priceRial), capacity: Number(l.capacity), reserveDeadline: tehranLocalToIso(`${prev}T${reserveTime}`), notes: '' }));
+        const d = addDays(date, i);
+        return lines.map((l) => ({ serviceDate: d, mealType: l.mealType as 'Lunch', foodId: l.foodId, priceRial: Number(l.priceRial), capacity: Number(l.capacity), notes: '' }));
       });
       const r = await offeringsBulk({ token, mode: 'items', items });
       toast.success(`${faNum(r.created)} وعده ساخته شد${r.skipped ? ` · ${faNum(r.skipped)} مورد تکراری رد شد` : ''}.`);
@@ -58,7 +58,7 @@ export function DayMenuBuilder({ open, onClose, onDone, token, catalog, initialD
         <DialogHeader className="border-b px-5 pb-3 pt-5 text-right"><DialogTitle className="flex items-center gap-2 text-lg"><CalendarPlus className="h-5 w-5 text-primary" />چیدن منوی روز</DialogTitle><DialogDescription>روی غذاها بزنید تا به منو اضافه شوند.</DialogDescription></DialogHeader>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>تاریخ</Label><Input className="h-11 rounded-xl" type="date" dir="ltr" value={date} onChange={(e) => setDate(e.target.value)} /><p className="text-[11px] text-muted-foreground">{faDate(date)}{days > 1 && ` تا ${faDate(addDays(date, days - 1))}`}</p></div>
+            <div className="space-y-1.5"><Label>تاریخ</Label><JalaliDateInput    value={date} onChange={(v) => setDate(v)} /><p className="text-[11px] text-muted-foreground">{faDate(date)}{days > 1 && ` تا ${faDate(addDays(date, days - 1))}`}</p></div>
             <div className="space-y-1.5"><Label>تکرار برای</Label>
               <div className="flex h-11 items-center justify-between rounded-xl border bg-card px-1">
                 <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => setDays(Math.min(days + 1, 14))}><Plus className="h-4 w-4" /></Button>
@@ -98,7 +98,7 @@ export function DayMenuBuilder({ open, onClose, onDone, token, catalog, initialD
               ))}
             </div>
           )}
-          <div className="space-y-1.5"><Label>مهلت رزرو (ساعتِ روز قبل)</Label><Input className="h-11 rounded-xl" type="time" dir="ltr" value={reserveTime} onChange={(e) => setReserveTime(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>مهلت رزرو</Label><p className="rounded-xl bg-muted px-3 py-2.5 text-xs text-muted-foreground">پیش‌فرض: تا ۴۸ ساعت قبل از وعده (قابل تغییر در تنظیمات)</p></div>
           <ErrorNote message={err} onClose={() => setErr('')} />
         </div>
         <div className="flex items-center gap-2 border-t bg-card px-5 py-3 pb-safe">
@@ -137,8 +137,8 @@ export function CopyMenuDialog({ open, onClose, onDone, token, weekStart }: { op
           {(['day', 'week'] as const).map((m) => <button key={m} onClick={() => { setMode(m); setTarget(addDays(from, m === 'week' ? 7 : 1)); }} className={cn('rounded-md py-1.5 text-sm transition', mode === m ? 'bg-card font-semibold shadow-sm' : 'text-muted-foreground')}>{m === 'day' ? 'یک روز' : 'یک هفته'}</button>)}
         </div>
         <div className="grid gap-3">
-          <div className="space-y-1.5"><Label>{mode === 'week' ? 'شروع هفته‌ی مبدأ' : 'روز مبدأ'}</Label><Input type="date" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} /><p className="text-xs text-muted-foreground">{faDate(from)}{mode === 'week' && ` تا ${faDate(to)}`}</p></div>
-          <div className="space-y-1.5"><Label>شروع مقصد</Label><Input type="date" dir="ltr" value={target} onChange={(e) => setTarget(e.target.value)} /><p className="text-xs text-muted-foreground">{faDate(target)}</p></div>
+          <div className="space-y-1.5"><Label>{mode === 'week' ? 'شروع هفته‌ی مبدأ' : 'روز مبدأ'}</Label><JalaliDateInput   value={from} onChange={(v) => setFrom(v)} /><p className="text-xs text-muted-foreground">{faDate(from)}{mode === 'week' && ` تا ${faDate(to)}`}</p></div>
+          <div className="space-y-1.5"><Label>شروع مقصد</Label><JalaliDateInput   value={target} onChange={(v) => setTarget(v)} /><p className="text-xs text-muted-foreground">{faDate(target)}</p></div>
           <div className="space-y-1.5"><Label>تعداد تکرار پشت‌سرهم</Label><Input inputMode="numeric" dir="ltr" value={repeat} onChange={(e) => setRepeat(e.target.value.replace(/\D/g, '').slice(0, 2))} /><p className="text-xs text-muted-foreground">مثلاً ۴ = چهار {mode === 'week' ? 'هفته' : 'روز'} متوالی از تاریخ مقصد</p></div>
         </div>
         <ErrorNote message={err} onClose={() => setErr('')} />

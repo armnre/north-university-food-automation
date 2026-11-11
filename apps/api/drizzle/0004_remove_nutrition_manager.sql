@@ -1,3 +1,2 @@
--- نقش «مدیر تغذیه» حذف شد؛ وظایفش به پیمانکار تغذیه منتقل شده. حساب‌های قبلی غیرفعال می‌شوند
--- تا مدیر ارشد/معاونت آن‌ها را با نقش پیمانکار (همراه با تعیین شرکت پیمانکار) دوباره فعال کند.
-UPDATE "staff_users" SET "role" = 'Contractor', "active" = false WHERE "role" = 'NutritionManager';
+-- نقش «مدیر تغذیه» حذف شد؛ وظایفش به «پیمانکار تغذیه» منتقل شده (یک سلف مرکزی، بدون شرکت پیمانکار).
+UPDATE "staff_users" SET "role" = 'Contractor' WHERE "role" = 'NutritionManager';

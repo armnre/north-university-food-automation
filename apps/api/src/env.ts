@@ -24,6 +24,8 @@ const schema = z
       .int()
       .default(6 * 1024 * 1024),
     ONLINE_PAYMENT_ENABLED: bool,
+    PAYMENT_PROVIDER: z.enum(['saman', 'zarinpal']).default('saman'),
+    SAMAN_TERMINAL_ID: z.string().regex(/^\d+$/).optional(),
     ZARINPAL_MERCHANT_ID: z.string().optional(),
     ALLOW_SANDBOX_GATEWAY: bool,
     SMS_PROVIDER: z.enum(['console', 'kavenegar']).default('console'),
@@ -33,7 +35,9 @@ const schema = z
   .superRefine((e, ctx) => {
     if (e.NODE_ENV === 'production') {
       if (e.ALLOW_SANDBOX_GATEWAY) ctx.addIssue({ code: 'custom', path: ['ALLOW_SANDBOX_GATEWAY'], message: 'sandbox gateway is forbidden in production' });
-      if (e.ONLINE_PAYMENT_ENABLED && !e.ZARINPAL_MERCHANT_ID)
+      if (e.ONLINE_PAYMENT_ENABLED && e.PAYMENT_PROVIDER === 'saman' && !e.SAMAN_TERMINAL_ID)
+        ctx.addIssue({ code: 'custom', path: ['SAMAN_TERMINAL_ID'], message: 'required when ONLINE_PAYMENT_ENABLED=true' });
+      if (e.ONLINE_PAYMENT_ENABLED && e.PAYMENT_PROVIDER === 'zarinpal' && !e.ZARINPAL_MERCHANT_ID)
         ctx.addIssue({ code: 'custom', path: ['ZARINPAL_MERCHANT_ID'], message: 'required when ONLINE_PAYMENT_ENABLED=true' });
       if (e.SMS_PROVIDER === 'kavenegar' && !e.KAVENEGAR_API_KEY)
         ctx.addIssue({ code: 'custom', path: ['KAVENEGAR_API_KEY'], message: 'required for kavenegar' });

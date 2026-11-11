@@ -5,6 +5,7 @@ import { accounts, cafeterias, mealSlots, systemSettings } from './schema.js';
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   student_cancellation_enabled: false,
   cancel_cutoff_hours: 12,
+  reserve_hours_before_meal: 48,
   noshow_grace_minutes: 30,
   noshow_refund: false,
   scan_window_before_minutes: 60,

@@ -1,3 +1,4 @@
+import JalaliDateInput from '../../components/JalaliDateInput';
 import { useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
 import { AlertTriangle, CheckCircle2, Download, Loader2, Plus } from 'lucide-react';
@@ -51,8 +52,8 @@ export default function FinancePage() {
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Select value={type} onValueChange={(v) => { setType(v); setPage(0); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی انواع</SelectItem>{Object.entries(LEDGER_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select>
         <Input placeholder="شماره دانشجویی یا شناسه پیگیری" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
-        <Input type="date" dir="ltr" value={from} onChange={(e) => { setFrom(e.target.value); setPage(0); }} aria-label="از تاریخ" />
-        <Input type="date" dir="ltr" value={to} onChange={(e) => { setTo(e.target.value); setPage(0); }} aria-label="تا تاریخ" />
+        <JalaliDateInput   value={from} onChange={(v) => { setFrom(v); setPage(0); }} aria-label="از تاریخ" />
+        <JalaliDateInput   value={to} onChange={(v) => { setTo(v); setPage(0); }} aria-label="تا تاریخ" />
       </div>
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.entries.length ? <EmptyState title="تراکنشی یافت نشد" /> : (
         <div className="overflow-x-auto rounded-xl border bg-card">

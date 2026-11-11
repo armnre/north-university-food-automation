@@ -170,8 +170,12 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       })
       .parse(req.body);
     if (!canManage(role, b.role)) fail('FORBIDDEN', 'شما اجازه‌ی ساخت یا ویرایش این نقش را ندارید.');
-    if (b.role === 'Operator' && !b.cafeteriaId) fail('BAD_REQUEST', 'برای کارمند سلف باید سلف مشخص شود.');
-    if (b.role === 'Contractor' && !b.contractorId) fail('BAD_REQUEST', 'برای پیمانکار باید شرکت پیمانکار مشخص شود.');
+    // Single central cafeteria: an operator without an explicit cafeteria is attached to the default one.
+    if (b.role === 'Operator' && !b.cafeteriaId) {
+      const cf = await db.execute<{ id: string }>(sql`SELECT id FROM cafeterias WHERE active ORDER BY created_at LIMIT 1`);
+      if (!cf.rows[0]) fail('BAD_REQUEST', 'ابتدا سلف مرکزی را تعریف کنید.');
+      b.cafeteriaId = cf.rows[0].id;
+    }
     return db.transaction(async (tx) => {
       let temp: string | null = null;
       let id = b.id;
@@ -591,7 +595,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       })
       .parse(req.query);
     const s = like(q.search ? normalizeDigits(q.search) : undefined);
-    const contractor = p.role === 'Contractor' ? p.contractorId : null;
+    const contractor = null; // single central cafeteria — no per-contractor scoping
     const r = await db.execute<
       Record<string, unknown>
     >(sql`SELECT r.id, r.code, r.status, r.price_rial, r.customer_group, r.created_at, r.delivered_at, o.service_date, ms.code AS slot, f.name AS food, cf.name AS cafeteria,
@@ -672,6 +676,12 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     return { id: r.rows[0]!.id };
   });
 
+  // Public (login page footer): contact/about/rules texts required for e-Namad and visitors.
+  app.get('/api/v1/public/info', { config: { access: 'public' } }, async () => {
+    const s = await getSettings(db);
+    return { supportText: String(s.support_text ?? ''), helpText: String(s.help_text ?? ''), policyText: String(s.policy_text ?? '') };
+  });
+
   app.get('/api/v1/settings', { config: { access: 'authenticated' } }, async (req) => {
     const p = requirePrincipal(req);
     const s = await getSettings(db);
@@ -702,6 +712,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     .object({
       student_cancellation_enabled: zBool,
       cancel_cutoff_hours: zInt(0, 168),
+      reserve_hours_before_meal: zInt(0, 336),
       noshow_grace_minutes: zInt(0, 240),
       noshow_refund: zBool,
       scan_window_before_minutes: zInt(0, 240),

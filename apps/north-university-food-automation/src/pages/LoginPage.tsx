@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, ShieldCheck, GraduationCap, Building2, BadgeCheck, Lock } from 'lucide-react';
+import { Loader2, GraduationCap, Building2, BadgeCheck, Lock } from 'lucide-react';
 import { authEmployeeLogin, authSetupAdmin, authSetupStatus, authStaffLogin, authStudentLogin } from '../lib/api';
 import { CaptchaBox, captchaFrom, type Captcha } from '../components/AuthExtras';
 import { Button } from '@project/components/ui/button';
@@ -66,8 +66,10 @@ function StaffForm({ mode }: { mode: LoginMode }) {
   const [p, setP] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const t = MODE_TEXT[mode];
-  const isEmp = mode !== 'admin';
+  // Staff tab also serves admins: a non-numeric username signs in to the management panel.
+  const adminUser = mode === 'Staff' && /[a-zA-Z]/.test(u);
+  const t = adminUser ? { ...MODE_TEXT.admin, user: MODE_TEXT.Staff.user + ' / نام کاربری', btn: 'ورود' } : MODE_TEXT[mode];
+  const isEmp = mode !== 'admin' && !adminUser;
   const nidErr = isEmp && p && p.replace(/\D/g, '').length !== 10 && !/[۰-۹]/.test(p) ? 'کد ملی ۱۰ رقم است' : undefined;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,9 +121,8 @@ function SetupForm({ onDone }: { onDone: () => void }) {
 
 const TABS = [
   { v: 'student', label: 'دانشجو', icon: GraduationCap, hint: 'ورود با شماره دانشجویی و کد ملی' },
-  { v: 'Staff', label: 'کارکنان', icon: Building2, hint: 'ورود با شماره پرسنلی و کد ملی' },
+  { v: 'Staff', label: 'کارکنان', icon: Building2, hint: 'ورود با شماره پرسنلی و کد ملی — مدیران سامانه با نام کاربری و رمز عبور' },
   { v: 'Faculty', label: 'اساتید', icon: BadgeCheck, hint: 'ورود اعضای هیئت علمی با شماره کارگزینی و کد ملی' },
-  { v: 'admin', label: 'مدیریت', icon: ShieldCheck, hint: 'ورود مدیران و کاربران اداره تغذیه' },
 ] as const;
 
 export default function LoginPage() {
@@ -149,15 +150,14 @@ export default function LoginPage() {
             <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
           </div>
           <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="mb-6 grid h-auto w-full grid-cols-4 gap-1 rounded-2xl p-1">
+            <TabsList className="mb-6 grid h-auto w-full grid-cols-3 gap-1 rounded-2xl p-1">
               {TABS.map(({ v, label, icon: Icon }) => (
                 <TabsTrigger key={v} value={v} className="flex flex-col gap-1 rounded-xl py-2 text-xs data-[state=active]:shadow-[var(--shadow-sm)]"><Icon className="h-4 w-4" />{label}</TabsTrigger>
               ))}
             </TabsList>
             <TabsContent value="student"><StudentForm /></TabsContent>
-            <TabsContent value="Staff"><StaffForm mode="Staff" /></TabsContent>
+            <TabsContent value="Staff">{needsSetup ? <SetupForm onDone={() => setNeedsSetup(false)} /> : <StaffForm mode="Staff" />}</TabsContent>
             <TabsContent value="Faculty"><StaffForm mode="Faculty" /></TabsContent>
-            <TabsContent value="admin">{needsSetup ? <SetupForm onDone={() => setNeedsSetup(false)} /> : <StaffForm mode="admin" />}</TabsContent>
           </Tabs>
         </div>
         <div className="mt-6 flex items-center justify-center gap-2 text-center text-[11px] text-muted-foreground">

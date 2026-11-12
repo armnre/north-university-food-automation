@@ -6,11 +6,11 @@ import { hmac } from '../lib/crypto.js';
 import { fail } from '../lib/errors.js';
 
 export const MAX_ROWS = 10_000;
-export const MAX_BYTES = 5 * 1024 * 1024;
+export const MAX_BYTES = 10 * 1024 * 1024;
 export type FieldKey = 'studentNumber' | 'nationalId' | 'fullName' | 'firstName' | 'lastName' | 'faculty' | 'major' | 'degree' | 'entryYear' | 'mobile';
 const GUESS: Record<FieldKey, string[]> = {
   studentNumber: ['شماره دانشجویی', 'شماره دانشجو', 'student', 'stno'],
-  nationalId: ['کد ملی', 'کدملی', 'national'],
+  nationalId: ['کد ملی', 'کدملی', 'شماره ملی', 'national'],
   fullName: ['نام و نام خانوادگی', 'نام کامل', 'fullname'],
   firstName: ['نام', 'first'],
   lastName: ['نام خانوادگی', 'فامیلی', 'last'],
@@ -21,11 +21,13 @@ const GUESS: Record<FieldKey, string[]> = {
   mobile: ['موبایل', 'تلفن همراه', 'mobile'],
 };
 
+/** Excel files from the university use Arabic ي/ك and ZWNJ/extra spaces in headers. */
+const hn = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[\u200c\s]+/g, ' ').trim().toLowerCase();
 export function guessMapping(headers: string[]): Partial<Record<FieldKey, string>> {
   const m: Partial<Record<FieldKey, string>> = {};
   const used = new Set<string>();
   for (const k of Object.keys(GUESS) as FieldKey[]) {
-    const h = headers.find((x) => !used.has(x) && GUESS[k].some((g) => x.trim().toLowerCase() === g.toLowerCase()));
+    const h = headers.find((x) => !used.has(x) && GUESS[k].some((g) => hn(x) === hn(g)));
     if (h) {
       m[k] = h;
       used.add(h);
@@ -33,7 +35,7 @@ export function guessMapping(headers: string[]): Partial<Record<FieldKey, string
   }
   for (const k of Object.keys(GUESS) as FieldKey[]) {
     if (m[k]) continue;
-    const h = headers.find((x) => !used.has(x) && GUESS[k].some((g) => x.toLowerCase().includes(g.toLowerCase())));
+    const h = headers.find((x) => !used.has(x) && GUESS[k].some((g) => hn(x).includes(hn(g))));
     if (h) {
       m[k] = h;
       used.add(h);
@@ -44,7 +46,7 @@ export function guessMapping(headers: string[]): Partial<Record<FieldKey, string
 
 /** Parses an .xlsx buffer (first sheet, header row 1). Rejects non-xlsx by magic bytes (PK zip). */
 export async function parseXlsx(buf: Buffer) {
-  if (buf.length > MAX_BYTES) fail('BAD_REQUEST', 'حجم فایل بیش از ۵ مگابایت است.');
+  if (buf.length > MAX_BYTES) fail('BAD_REQUEST', 'حجم فایل بیش از ۱۰ مگابایت است.');
   if (buf.subarray(0, 4).toString('hex') !== '504b0304') fail('BAD_REQUEST', 'فقط فایل اکسل ‎.xlsx‎ پذیرفته می‌شود.');
   const wb = new ExcelJS.Workbook();
   try {

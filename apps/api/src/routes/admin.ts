@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { canManage, hasPermission, normalizeDigits, ROLE_PERMISSIONS, STAFF_ROLES, tehranDate, type StaffRole } from '@food/shared';
+import { canManage, hasPermission, latinDigits, normalizeDigits, ROLE_PERMISSIONS, STAFF_ROLES, tehranDate, type StaffRole } from '@food/shared';
 import type { Db } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { randomCode } from '../lib/crypto.js';
@@ -75,10 +75,8 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
       .object({
         studentNumber: z.preprocess(emptyToUndef, z.coerce.string().max(30).optional()),
         employeeUsername: z.preprocess(emptyToUndef, z.coerce.string().max(50).optional()),
-        amountRial: z.coerce
-          .number()
-          .int()
-          .refine((v) => v !== 0),
+        amountRial: z
+          .preprocess((v) => (typeof v === 'string' ? Number(latinDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().refine((v) => v !== 0)),
         reason: z.string().trim().min(5).max(300),
         idempotencyKey: z.string().min(8).max(80),
         kind: z.enum(['MANUAL_CASH', 'ManualAdjust']).default('MANUAL_CASH'),
@@ -706,7 +704,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
 
   // Lenient: the form round-trips whatever GET returned (strings, extra keys), so coerce and strip.
   const zBool = z.preprocess((v) => (v === 'true' || v === 1 || v === '1' ? true : v === 'false' || v === 0 || v === '0' ? false : v), z.boolean());
-  const zInt = (min: number, max: number) => z.preprocess((v) => (typeof v === 'string' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(min).max(max));
+  const zInt = (min: number, max: number) => z.preprocess((v) => (typeof v === 'string' ? Number(latinDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(min).max(max));
   const zText = (max: number) => z.preprocess((v) => (v == null ? '' : String(v)), z.string().max(max));
   const settingsSchema = z
     .object({
@@ -728,7 +726,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     .partial();
 
   // DB returns "12:00:00"; time inputs send "12:00".
-  const hhmm = z.preprocess((v) => (typeof v === 'string' ? normalizeDigits(v).slice(0, 5) : v), z.string().regex(/^[0-2]\d:[0-5]\d$/));
+  const hhmm = z.preprocess((v) => (typeof v === 'string' ? latinDigits(v).slice(0, 5) : v), z.string().regex(/^[0-2]\d:[0-5]\d$/));
   app.put('/api/v1/settings', { config: { access: 'settingsWrite' } }, async (req) => {
     const p = requirePrincipal(req);
     const b = z
@@ -771,7 +769,7 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
   });
 
   // ── background jobs: last run of each job (SuperAdmin) ────────────────
-  app.get('/api/v1/admin/jobs', async (req) => {
+  app.get('/api/v1/admin/jobs', { config: { access: 'settingsWrite' } }, async (req) => {
     if (staffRole(req) !== 'SuperAdmin') fail('FORBIDDEN', 'شما به این بخش دسترسی ندارید.');
     const r = await db.execute<Record<string, unknown>>(sql`
       SELECT DISTINCT ON (job) job, started_at, finished_at, ok, detail,

@@ -18,8 +18,8 @@ import { downloadCsv, errMsg, faDateTime, faNum } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
 
-const MAX_BYTES = 5 * 1024 * 1024;
-const MAX_ROWS = 3000;
+const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_ROWS = 10000;
 const FIELDS = [
   { key: 'studentNumber', label: 'شماره دانشجویی', req: true, guess: ['شماره دانشجویی', 'شماره دانشجو', 'student', 'stno'] },
   { key: 'nationalId', label: 'کد ملی', req: true, guess: ['کد ملی', 'کدملی', 'شماره ملی', 'national'] },
@@ -42,11 +42,12 @@ const NONE = '__none__';
 const KIND: Record<string, string> = { error: 'خطا', new: 'جدید', changed: 'تغییر', unchanged: 'بدون تغییر', returning: 'بازگشتی', conflict: 'تعارض (رد می‌شود)' };
 const STEPS = ['انتخاب فایل', 'تطبیق ستون‌ها', 'پیش‌نمایش و بررسی', 'گزارش نهایی'];
 
+const hn = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[\u200c\s]+/g, ' ').trim().toLowerCase();
 function guessMapping(headers: string[]) {
   const m: Partial<Record<FieldKey, string>> = {};
   for (const f of FIELDS) {
-    const exact = headers.find((h) => f.guess.some((g) => h.trim().toLowerCase() === g.toLowerCase()));
-    const loose = headers.find((h) => f.guess.some((g) => h.toLowerCase().includes(g.toLowerCase())) && !Object.values(m).includes(h));
+    const exact = headers.find((h) => f.guess.some((g) => hn(h) === hn(g)));
+    const loose = headers.find((h) => f.guess.some((g) => hn(h).includes(hn(g))) && !Object.values(m).includes(h));
     if (exact ?? loose) m[f.key] = exact ?? loose;
   }
   if (m.firstName && m.firstName === m.lastName) delete m.firstName;
@@ -74,7 +75,7 @@ export default function ImportPage() {
   const onFile = async (f: File | undefined) => {
     if (!f) return;
     if (!/\.(xlsx|xls|csv)$/i.test(f.name)) return toast.error('فقط فایل‌های Excel (xlsx، xls) یا CSV مجاز است.');
-    if (f.size > MAX_BYTES) return toast.error('حجم فایل بیش از ۵ مگابایت است.');
+    if (f.size > MAX_BYTES) return toast.error('حجم فایل بیش از ۱۰ مگابایت است.');
     try {
       // values only: formulas, HTML and styles are ignored
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
@@ -133,7 +134,7 @@ export default function ImportPage() {
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 text-center hover:border-primary/50 hover:bg-secondary/40">
             <Upload className="h-10 w-10 text-primary" />
             <span className="mt-3 font-semibold">فایل Excel معاونت را انتخاب کنید</span>
-            <span className="mt-1 text-sm text-muted-foreground">فقط xlsx · حداکثر ۵ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
+            <span className="mt-1 text-sm text-muted-foreground">فقط xlsx · حداکثر ۱۰ مگابایت · حداکثر {faNum(MAX_ROWS)} ردیف · ردیف اول باید عنوان ستون‌ها باشد</span>
             <input type="file" className="sr-only" accept=".xlsx" onChange={(e) => onFile(e.target.files?.[0])} />
           </label>
           <p className="mt-4 text-xs text-muted-foreground">ستون‌های الزامی: شماره دانشجویی، کد ملی و نام (یا نام و نام خانوادگی جداگانه). ستون‌های اختیاری: دانشکده، رشته، مقطع، سال ورود.</p>

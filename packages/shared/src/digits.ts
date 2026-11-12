@@ -10,3 +10,8 @@ export function normalizeDigits(input: string): string {
 export function toPersianDigits(input: string | number): string {
   return String(input).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]!);
 }
+
+/** Converts Persian/Arabic digits to ASCII only — keeps dashes, colons and signs (dates, times, negative amounts). */
+export function latinDigits(input: string): string {
+  return input.replace(/[۰-۹٠-٩]/g, (d) => MAP[d] ?? d).replace(/[\u200c\u200f]/g, '').trim();
+}

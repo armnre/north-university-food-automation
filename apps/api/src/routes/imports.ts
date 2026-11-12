@@ -24,7 +24,7 @@ export function importRoutes(app: FastifyInstance, db: Db, env: Env) {
         if (!/\.xlsx$/i.test(part.filename)) fail('BAD_REQUEST', 'فقط فایل اکسل ‎.xlsx‎ پذیرفته می‌شود.');
         fileName = part.filename.slice(0, 200);
         buf = await part.toBuffer();
-        if (part.file.truncated) fail('BAD_REQUEST', 'حجم فایل بیش از ۵ مگابایت است.');
+        if (part.file.truncated) fail('BAD_REQUEST', 'حجم فایل بیش از ۱۰ مگابایت است.');
       } else fields[part.fieldname] = String(part.value).slice(0, 5000);
     }
     if (!buf) fail('BAD_REQUEST', 'فایلی ارسال نشده است.');

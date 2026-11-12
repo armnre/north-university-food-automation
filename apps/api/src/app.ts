@@ -44,7 +44,7 @@ export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<Fas
   });
 
   await app.register(cookie);
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 10 } });
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 10 } });
   await app.register(helmet, {
     contentSecurityPolicy: {
       useDefaults: false,
@@ -79,7 +79,7 @@ export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<Fas
       return reply.status(400).send({
         error: {
           code: 'BAD_REQUEST',
-          message: 'اطلاعات ارسالی معتبر نیست.',
+          message: `اطلاعات ارسالی معتبر نیست${err.issues[0]?.path.length ? ` (فیلد: ${err.issues.map((i) => i.path.join('.')).slice(0, 3).join('، ')})` : ''}.`,
           details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
         },
       });

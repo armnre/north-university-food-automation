@@ -28,7 +28,7 @@ export default function StudentDashboard({ me }: { me: StudentMe }) {
         <div className="relative flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-primary-foreground/75">{faDate(data.r.today)}</p>
-            <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">سلام، {me.fullName.split(' ')[0] || 'دانشجوی گرامی'} 👋</h1>
+            <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">سلام، {me.fullName.split(' ')[0] || (me.customerKind && me.customerKind !== 'Student' ? 'همکار گرامی' : 'دانشجوی گرامی')} 👋</h1>
           </div>
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/10 text-[hsl(var(--sidebar-primary))]"><WalletIcon className="h-5 w-5" /></span>
         </div>

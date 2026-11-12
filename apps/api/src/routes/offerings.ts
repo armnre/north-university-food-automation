@@ -2,7 +2,7 @@ import { getSettings, num as settingNum } from '../services/settings.js';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { addDays, normalizeDigits, tehranDate, tehranWallToUtc } from '@food/shared';
+import { addDays, latinDigits, tehranDate, tehranWallToUtc } from '@food/shared';
 import type { Db, Tx } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { iso, MEAL_TYPE, n, toDate } from '../lib/customer.js';
@@ -11,14 +11,15 @@ import { audit } from '../services/audit.js';
 import { cancelReservationInTx } from '../services/cancel.js';
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-const num = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v);
+const num = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? Number(latinDigits(v).replace(/[,٬\s]/g, '')) : v);
 const undef = (v: unknown) => (v === '' || v === null ? undefined : v);
+const zDate = z.preprocess((v) => (typeof v === 'string' ? latinDigits(v).slice(0, 10) : v), z.string().regex(dateRe));
 const rialN = z.preprocess(num, z.number().int().min(0).max(100_000_000));
 const SLOT: Record<string, string> = { Breakfast: 'breakfast', Lunch: 'lunch', Dinner: 'dinner' };
 
 const saveSchema = z.object({
   id: z.preprocess(undef, z.string().uuid().optional()),
-  serviceDate: z.preprocess((v) => (typeof v === 'string' ? normalizeDigits(v).slice(0, 10) : v), z.string().regex(dateRe)),
+  serviceDate: z.preprocess((v) => (typeof v === 'string' ? latinDigits(v).slice(0, 10) : v), z.string().regex(dateRe)),
   mealType: z.enum(['Breakfast', 'Lunch', 'Dinner']),
   foodId: z.string().uuid(),
   cafeteriaId: z.preprocess(undef, z.string().uuid().optional()),
@@ -216,11 +217,11 @@ export function offeringRoutes(app: FastifyInstance, db: Db) {
         z.object({ mode: z.literal('create'), items: z.array(saveSchema).min(1).max(500) }),
         z.object({
           mode: z.literal('copy'),
-          sourceFrom: z.string().regex(dateRe),
-          sourceTo: z.string().regex(dateRe),
-          targetFrom: z.string().regex(dateRe),
+          sourceFrom: zDate,
+          sourceTo: zDate,
+          targetFrom: zDate,
           repeat: z.preprocess(num, z.number().int().min(1).max(12)).default(1),
-          publish: z.boolean().default(false),
+          publish: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v ?? false), z.boolean()),
         }),
       ])
       .parse(raw);

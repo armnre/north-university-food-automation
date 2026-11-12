@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { authLogout, authMe, ApiError } from './api';
 
-export type StudentMe = { id: string; studentNumber: string; fullName: string; faculty: string; major: string; degree: string; entryYear: number | null; nationalIdMasked: string };
+export type StudentMe = { id: string; studentNumber: string; fullName: string; faculty: string; major: string; degree: string; entryYear: number | null; nationalIdMasked: string; customerKind?: 'Student' | 'Staff' | 'Faculty' | 'Contractor' | 'Visiting' };
 export type StaffMe = { id: string; username: string; fullName: string; role: string; perms: string[] };
 type Me = { kind: 'student'; student: StudentMe } | { kind: 'staff'; staff: StaffMe };
 type Raw = Me | { kind: 'employee'; employee: { id: string; username: string; fullName: string; employeeKind: string; mustChangePassword: boolean } };
@@ -10,10 +10,14 @@ type Raw = Me | { kind: 'employee'; employee: { id: string; username: string; fu
 function normalize(r: Raw): { me: Me; must: boolean } {
   if (r.kind === 'employee') {
     const e = r.employee;
-    return { me: { kind: 'student', student: { id: e.id, studentNumber: e.username, fullName: e.fullName, faculty: '', major: '', degree: '', entryYear: null, nationalIdMasked: '' } }, must: e.mustChangePassword };
+    return { me: { kind: 'student', student: { id: e.id, studentNumber: e.username, fullName: e.fullName, faculty: '', major: '', degree: '', entryYear: null, nationalIdMasked: '', customerKind: (e.employeeKind || 'Staff') as StudentMe['customerKind'] } }, must: e.mustChangePassword };
   }
   return { me: r, must: r.kind === 'staff' && !!(r.staff as StaffMe & { mustChangePassword?: boolean }).mustChangePassword };
 }
+
+export const CUSTOMER_KIND_LABEL: Record<string, string> = { Student: 'دانشجو', Staff: 'کارمند', Faculty: 'عضو هیئت علمی', Contractor: 'پیمانکار', Visiting: 'استاد مدعو' };
+export const ID_LABEL: Record<string, string> = { Student: 'شماره دانشجویی', Staff: 'شماره پرسنلی', Faculty: 'شماره کارگزینی', Contractor: 'نام کاربری', Visiting: 'نام کاربری' };
+export const isStudent = (me: StudentMe) => !me.customerKind || me.customerKind === 'Student';
 
 type Ctx = { token: string; me: Me | null; loading: boolean; mustChangePassword: boolean; signIn: (token?: string) => Promise<void>; signOut: () => Promise<void> };
 const SessionCtx = createContext<Ctx>(null as unknown as Ctx);

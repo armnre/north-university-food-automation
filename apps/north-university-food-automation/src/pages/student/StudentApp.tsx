@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Bell, CalendarDays, HelpCircle, Home, ReceiptText, UserRound, Wallet } from 'lucide-react';
 import { studentNotifications } from '../../lib/api';
 import Shell, { type NavItem } from '../../components/Shell';
-import { useSession, type StudentMe } from '../../lib/session';
+import { CUSTOMER_KIND_LABEL, useSession, type StudentMe } from '../../lib/session';
 import StudentDashboard from './StudentDashboard';
 import MenuPage from './MenuPage';
 import MyReservations from './MyReservations';
@@ -43,7 +43,7 @@ function NotificationBell() {
 
 export default function StudentApp({ me }: { me: StudentMe }) {
   return (
-    <Shell items={items} userLabel={me.fullName || me.studentNumber} roleLabel={`دانشجو · ${me.studentNumber}`} headerActions={<NotificationBell />}>
+    <Shell items={items} userLabel={me.fullName || me.studentNumber} roleLabel={`${CUSTOMER_KIND_LABEL[me.customerKind ?? 'Student'] ?? 'دانشجو'} · ${me.studentNumber}`} headerActions={<NotificationBell />}>
       <Routes>
         <Route path="/" element={<StudentDashboard me={me} />} />
         <Route path="/menu" element={<MenuPage />} />

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { Db } from '../db/client.js';
 import { requirePrincipal } from '../lib/auth.js';
 import { n } from '../lib/customer.js';
-import { normalizeDigits } from '@food/shared';
+import { latinDigits } from '@food/shared';
 import { fail } from '../lib/errors.js';
 import { audit } from '../services/audit.js';
 
@@ -12,7 +12,7 @@ const MEAL = z.enum(['Breakfast', 'Lunch', 'Dinner']);
 const str = (max: number) => z.preprocess((v) => (v == null ? '' : String(v)), z.string().max(max));
 const undef = (v: unknown) => (v === '' || v === null ? undefined : v);
 const numOrNull = (max: number) =>
-  z.preprocess((v) => (v === '' || v === undefined ? null : typeof v === 'string' ? Number(normalizeDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(0).max(max).nullable().optional());
+  z.preprocess((v) => (v === '' || v === undefined ? null : typeof v === 'string' ? Number(latinDigits(v).replace(/[,٬\s]/g, '')) : v), z.number().int().min(0).max(max).nullable().optional());
 const item = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('contractor'),

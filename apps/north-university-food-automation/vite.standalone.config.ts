@@ -15,7 +15,7 @@ const api = process.env.API_ORIGIN ?? 'http://127.0.0.1:3000';
 
 const HEAD = `
     <title>سامانه اتوماسیون تغذیه دانشگاه شمال</title>
-    <meta name="description" content="سامانه رسمی رزرو غذا، کیف پول و تحویل سلف دانشگاه شمال" />
+    <meta name="description" content="سامانه رسمی رزرو غذا، پرداخت اینترنتی و تحویل سلف دانشگاه شمال" />
     <meta name="theme-color" content="#155e52" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

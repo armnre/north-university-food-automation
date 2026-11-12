@@ -44,14 +44,14 @@
 | `POST` | `/api/v1/imports/:id/commit` | `importsManage` — ایمپورت اکسل دانشجویان |
 | `POST` | `/api/v1/imports/:id/undo` | `importsManage` — ایمپورت اکسل دانشجویان |
 | `POST` | `/api/v1/imports/preview` | `importsManage` — ایمپورت اکسل دانشجویان |
-| `GET` | `/api/v1/me/menu` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `GET` | `/api/v1/me/notifications` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `GET` | `/api/v1/me/profile` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `GET` | `/api/v1/me/reservations` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `POST` | `/api/v1/me/reservations/:id/cancel` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `POST` | `/api/v1/me/reservations/:id/reissue-qr` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `POST` | `/api/v1/me/reserve` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
-| `GET` | `/api/v1/me/wallet` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/menu` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/notifications` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/profile` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/reservations` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reservations/:id/cancel` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reservations/:id/reissue-qr` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `POST` | `/api/v1/me/reserve` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
+| `GET` | `/api/v1/me/wallet` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
 | `GET` | `/api/v1/notifications` | `notificationsSend` — ارسال اعلان |
 | `POST` | `/api/v1/notifications` | `notificationsSend` — ارسال اعلان |
 | `GET` | `/api/v1/offerings` | `menuRead` — مشاهده منو و آمار آشپزخانه |
@@ -60,10 +60,10 @@
 | `POST` | `/api/v1/offerings/:id/sold-out` | `reservationsAdminCancel` — لغو اداری رزرو و لغو/اتمام وعده |
 | `POST` | `/api/v1/offerings/bulk` | `menuWrite` — مدیریت منو و قیمت |
 | `POST` | `/api/v1/payments/:id/resolve` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
-| `POST` | `/api/v1/payments/checkout/start` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `POST` | `/api/v1/payments/checkout/start` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
 | `GET` | `/api/v1/payments/needs-review` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
 | `POST` | `/api/v1/payments/reconcile` | `paymentsReview` — تعیین‌تکلیف پرداخت‌های NeedsReview |
-| `POST` | `/api/v1/payments/result` | `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |
+| `POST` | `/api/v1/payments/result` | `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |
 | `GET` | `/api/v1/payments/zarinpal/callback` | عمومی |
 | `GET` | `/api/v1/reports/advanced` | `reportsRead` — گزارش‌ها |
 | `GET` | `/api/v1/reports/export` | `reportsRead` — گزارش‌ها |

@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogOut, Menu as MenuIcon, X } from 'lucide-react';
+import { ChevronLeft, LogOut, Menu as MenuIcon, X } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@project/components/ui/dropdown-menu';
+import { Link } from 'react-router-dom';
 import { cn } from '@project/components/lib/utils';
 import { Emblem } from './ui-kit';
 import { useSession } from '../lib/session';
@@ -70,6 +72,40 @@ function Avatar({ label }: { label: string }) {
   return <img src="https://images.fillout.com/897142/thgnrgdvdc/generated-images/jGfdk2ejTg5howczPkJJS2/img_37WK_4K4vjO6EpYg.jpg" alt={label} className="h-10 w-10 shrink-0 rounded-full object-cover shadow-sm ring-2 ring-[hsl(var(--sidebar-primary)/0.6)]" />;
 }
 
+function AccountMenu({ items, userLabel, roleLabel }: { items: NavItem[]; userLabel: string; roleLabel: string }) {
+  const { signOut } = useSession();
+  return (
+    <DropdownMenu dir="rtl">
+      <DropdownMenuTrigger aria-label="حساب کاربری" className="rounded-full outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-ring">
+        <Avatar label={userLabel} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={10} className="w-64 rounded-2xl p-2 shadow-[var(--shadow-xl)]">
+        <DropdownMenuLabel className="flex items-center gap-3 rounded-xl bg-muted/60 p-3 font-normal">
+          <Avatar label={userLabel} />
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold">{userLabel}</div>
+            <div className="truncate text-xs text-muted-foreground">{roleLabel}</div>
+          </div>
+        </DropdownMenuLabel>
+        {items.length > 0 && <DropdownMenuSeparator className="my-2" />}
+        {items.map((it) => (
+          <DropdownMenuItem key={it.to} asChild className="cursor-pointer gap-3 rounded-xl px-3 py-2.5">
+            <Link to={it.to}>
+              <span className="text-muted-foreground [&>svg]:h-[18px] [&>svg]:w-[18px]">{it.icon}</span>
+              <span className="flex-1">{it.label}</span>
+              <ChevronLeft className="h-4 w-4 text-muted-foreground/60" />
+            </Link>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator className="my-2" />
+        <DropdownMenuItem onClick={signOut} className="cursor-pointer gap-3 rounded-xl px-3 py-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive">
+          <LogOut className="h-[18px] w-[18px]" /> خروج از حساب
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function BottomNav({ items }: { items: NavItem[] }) {
   return (
     <nav className="glass fixed inset-x-3 bottom-3 z-30 grid rounded-[1.4rem] border border-border/70 p-1.5 shadow-[var(--shadow-xl)] lg:hidden"
@@ -94,6 +130,8 @@ export default function Shell({ items, userLabel, roleLabel, headerActions, chil
   const loc = useLocation();
   const current = items.find((i) => (i.to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(i.to)));
   const mobileItems = items.filter((i) => i.mobile).slice(0, 5);
+  const hasBottom = mobileItems.length > 0;
+  const extraItems = items.filter((i) => !mobileItems.includes(i));
 
   return (
     <div className="min-h-screen">
@@ -110,11 +148,12 @@ export default function Shell({ items, userLabel, roleLabel, headerActions, chil
         )}
       </AnimatePresence>
       <div className="lg:pr-64">
-        <header className="glass sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/60 px-4 sm:px-6">
+        <header className="glass sticky top-0 z-20 flex h-16 supports-[backdrop-filter]:bg-card/70 items-center justify-between border-b border-border/60 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
-            <button className="grid h-10 w-10 place-items-center rounded-xl border bg-card shadow-[var(--shadow-sm)] active:scale-95 lg:hidden" onClick={() => setOpen(true)} aria-label="باز کردن منو">
+            {!hasBottom && <button className="grid h-10 w-10 place-items-center rounded-xl border bg-card shadow-[var(--shadow-sm)] active:scale-95 lg:hidden" onClick={() => setOpen(true)} aria-label="باز کردن منو">
               {open ? <X className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
-            </button>
+            </button>}
+            {hasBottom && <div className="lg:hidden"><Emblem className="ring-1 ring-border" /></div>}
             <div className="min-w-0 leading-tight">
               <div className="hidden text-[11px] text-muted-foreground sm:block lg:block">سامانه تغذیه</div>
               <div className="truncate text-base font-bold">{current?.label ?? ''}</div>
@@ -126,7 +165,12 @@ export default function Shell({ items, userLabel, roleLabel, headerActions, chil
               <div className="text-xs font-medium">{userLabel}</div>
               <div className="text-[11px] text-muted-foreground">{roleLabel}</div>
             </div>
-            <Avatar label={userLabel} />
+            {hasBottom ? (
+              <>
+                <div className="lg:hidden"><AccountMenu items={extraItems} userLabel={userLabel} roleLabel={roleLabel} /></div>
+                <div className="hidden lg:block"><Avatar label={userLabel} /></div>
+              </>
+            ) : <Avatar label={userLabel} />}
           </div>
         </header>
         <main key={loc.pathname} className={cn('page-enter mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:py-8', mobileItems.length && 'pb-32 lg:pb-8')}>{children}</main>

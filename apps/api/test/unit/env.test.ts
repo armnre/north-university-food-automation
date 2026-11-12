@@ -16,7 +16,9 @@ describe('env validation', () => {
   it('forbids sandbox gateway in production', () =>
     expect(() => loadEnv({ ...base, NODE_ENV: 'production', ALLOW_SANDBOX_GATEWAY: 'true' })).toThrow(/sandbox/));
   it('requires merchant when online payment is enabled in production', () =>
-    expect(() => loadEnv({ ...base, NODE_ENV: 'production', ONLINE_PAYMENT_ENABLED: 'true' })).toThrow(/ZARINPAL_MERCHANT_ID/));
+    expect(() => loadEnv({ ...base, NODE_ENV: 'production', ONLINE_PAYMENT_ENABLED: 'true' })).toThrow(/SAMAN_TERMINAL_ID/));
+  it('requires zarinpal merchant when that provider is chosen in production', () =>
+    expect(() => loadEnv({ ...base, NODE_ENV: 'production', ONLINE_PAYMENT_ENABLED: 'true', PAYMENT_PROVIDER: 'zarinpal' })).toThrow(/ZARINPAL_MERCHANT_ID/));
   it('never echoes secret values in the error', () => {
     try {
       loadEnv({ ...base, NATIONAL_ID_PEPPER: 'short-secret' });

@@ -29,21 +29,20 @@ const login = async (sn: string, nid: string, ip: string) => {
 };
 
 describe('reservation engine', () => {
-  it('reserves via API, debits wallet with balance_after, shows in menu & reservations; idempotent replay', async () => {
+  it('direct API reserve is closed (gateway only); paid reservation shows in menu & reservations; idempotent replay', async () => {
     const s = await makeStudent(t.db);
-    await credit(t.db, s.account.id, 300_000n);
     const off = await makeOffering(t.db, { student: 120_000 });
     const c = await login(s.sn, s.nid, '10.20.0.1');
-    const r1 = await c.req('POST', '/api/v1/me/reserve', { offeringId: off, idempotencyKey: 'key-00000001' });
-    expect(r1.status).toBe(200);
-    const r2 = await c.req('POST', '/api/v1/me/reserve', { offeringId: off, idempotencyKey: 'key-00000001' });
-    expect(r2.body).toMatchObject({ reservationId: r1.body.reservationId, replay: true });
-    const w = await c.req('GET', '/api/v1/me/wallet');
-    expect(w.body.balanceRial).toBe(180_000);
-    expect(w.body.transactions[0].runningBalance).toBe(180_000);
-    const dup = await c.req('POST', '/api/v1/me/reserve', { offeringId: off, idempotencyKey: 'key-00000002' });
-    expect(dup.status).toBe(409);
-    expect(dup.body.error.message).toContain('قبلاً رزرو');
+    const direct = await c.req('POST', '/api/v1/me/reserve', { offeringId: off, idempotencyKey: 'key-00000001' });
+    expect(direct.status).toBe(400);
+    expect(direct.body.error.message).toContain('پرداخت اینترنتی');
+    // simulate a verified gateway payment covering the price
+    await credit(t.db, s.account.id, 120_000n);
+    const cust = { accountId: s.account.id, group: 'Student' as const, actor: 't' };
+    const r1 = await reserve(t.db, cust, off, 'key-00000001');
+    const r2 = await reserve(t.db, cust, off, 'key-00000001');
+    expect(r2).toMatchObject({ reservationId: r1.reservationId, replay: true });
+    await expect(reserve(t.db, cust, off, 'key-00000002')).rejects.toThrow(/قبلاً رزرو/);
     const menu = await c.req('GET', `/api/v1/me/menu?from=2020-01-01&to=2100-01-01`);
     expect(menu.body.offerings.find((o: { id: string }) => o.id === off).myStatus).toBe('Reserved');
     const list = await c.req('GET', '/api/v1/me/reservations');
@@ -52,11 +51,10 @@ describe('reservation engine', () => {
     await ledgerInvariants();
   });
 
-  it('insufficient balance rolls back capacity; missing group price → unavailable', async () => {
+  it('unpaid reservation is refused and rolls back capacity; missing group price → unavailable', async () => {
     const s = await makeStudent(t.db);
-    await credit(t.db, s.account.id, 50_000n);
     const off = await makeOffering(t.db, { student: 100_000, employee: null });
-    await expect(reserve(t.db, { accountId: s.account.id, group: 'Student', actor: 't' }, off, 'poor-1')).rejects.toThrow(/کافی/);
+    await expect(reserve(t.db, { accountId: s.account.id, group: 'Student', actor: 't' }, off, 'poor-1')).rejects.toThrow(/تأیید نشده/);
     expect((await t.db.execute<{ reserved_count: number }>(sql`SELECT reserved_count FROM meal_offerings WHERE id=${off}`)).rows[0]!.reserved_count).toBe(0);
     const e = await makeEmployee(t.db);
     const acct = (await t.db.execute<{ id: string }>(sql`SELECT id FROM accounts WHERE employee_id=${e.id}`)).rows[0]!.id;

@@ -24,7 +24,7 @@
 | `staffManage` — مدیریت کاربران کارکنان | ✓ | ✓ |  | ✓ |  |  |  |
 | `settingsWrite` — ویرایش تنظیمات | ✓ |  |  |  |  |  |  |
 | `auditRead` — مشاهده رخدادهای حسابرسی | ✓ | ✓ |  |  |  |  |  |
-| `selfService` — منو، رزرو، کیف پول و اعلان‌های شخصی |  |  |  |  |  | ✓ | ✓ |
+| `selfService` — منو، رزرو و پرداخت اینترنتی و اعلان‌های شخصی |  |  |  |  |  | ✓ | ✓ |
 
 ## سلسله‌مراتب ساخت حساب
 - **SuperAdmin**: StudentAffairs، Finance، Contractor، Operator، Employee

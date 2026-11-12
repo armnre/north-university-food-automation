@@ -105,6 +105,9 @@ describe('schema constraints on real PostgreSQL', () => {
       s.accountId,
       rev,
     ]);
+    // keep cached balances in step so the nightly reconciliation stays clean
+    await c2.query(`UPDATE accounts SET balance_rial = balance_rial + 500 WHERE id = $1`, [s.accountId]);
+    await c2.query(`UPDATE accounts SET balance_rial = balance_rial - 500 WHERE id = $1`, [rev]);
     await c2.query('COMMIT');
     c2.release();
   });

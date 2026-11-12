@@ -28,8 +28,14 @@ class FakeGateway implements PaymentGateway {
 }
 const gw = new FakeGateway();
 let t: Awaited<ReturnType<typeof testApp>>;
+const setOnline = async (on: boolean) => {
+  const mig = testPool('migrator');
+  await mig.query(`INSERT INTO system_settings (key, value) VALUES ('online_payment_enabled', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(on)]);
+  await mig.end();
+};
 beforeAll(async () => {
   t = await testApp({}, gw);
+  await setOnline(true);
 });
 afterAll(async () => {
   await t.close();
@@ -41,39 +47,37 @@ const login = async (s: Awaited<ReturnType<typeof makeStudent>>, ip: string) => 
 };
 const bal = async (id: string) => (await t.db.execute<{ balance_rial: bigint }>(sql`SELECT balance_rial FROM accounts WHERE id=${id}`)).rows[0]!.balance_rial;
 
-describe('zarinpal cart checkout', () => {
-  it('uses existing credit, sends the rest to gateway, settles once under 20 concurrent callbacks', async () => {
+describe('gateway cart checkout (no wallet)', () => {
+  it('sends the full total to the gateway and settles once under 20 concurrent callbacks', async () => {
     const s = await makeStudent(t.db);
-    await credit(t.db, s.account.id, 30_000n);
     const o1 = await makeOffering(t.db, { student: 50_000 });
     const o2 = await makeOffering(t.db, { student: 40_000 });
     const c = await login(s, '10.40.0.1');
     const st = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o1, o2], idempotencyKey: 'cart-00000001' });
+    expect(st.status).toBe(200);
     expect(st.body.redirectUrl).toContain('StartPay');
-    const p = (
-      await t.db.execute<{ amount_rial: bigint; credit_used_rial: bigint; authority: string }>(
-        sql`SELECT amount_rial, credit_used_rial, authority FROM payments WHERE id=${st.body.paymentId}`,
-      )
-    ).rows[0]!;
-    expect(p.amount_rial).toBe(60_000n);
-    expect(p.credit_used_rial).toBe(30_000n);
+    const p = (await t.db.execute<{ amount_rial: bigint; credit_used_rial: bigint; authority: string }>(
+      sql`SELECT amount_rial, credit_used_rial, authority FROM payments WHERE id=${st.body.paymentId}`)).rows[0]!;
+    expect(p.amount_rial).toBe(90_000n);
+    expect(p.credit_used_rial).toBe(0n);
+    const replay = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o1, o2], idempotencyKey: 'cart-00000001' });
+    expect(replay.body.paymentId).toBe(st.body.paymentId);
     const before = gw.verifyCalls;
-    const results = await Promise.all(
-      Array.from({ length: 20 }, () =>
-        t.app.inject({ method: 'GET', url: `/api/v1/payments/zarinpal/callback?pid=${st.body.paymentId}&Authority=${p.authority}&Status=OK` }),
-      ),
-    );
+    const results = await Promise.all(Array.from({ length: 20 }, () =>
+      t.app.inject({ method: 'GET', url: `/api/v1/payments/zarinpal/callback?pid=${st.body.paymentId}&Authority=${p.authority}&Status=OK` })));
     expect(results.every((r) => r.statusCode === 303)).toBe(true);
     expect(gw.verifyCalls - before).toBe(1); // row lock ⇒ single verify/settlement
     const ledger = await t.db.execute(sql`SELECT 1 FROM ledger_transactions WHERE payment_id=${st.body.paymentId} AND type='OnlinePayment'`);
     expect(ledger.rows).toHaveLength(1);
     const res = await c.req('POST', '/api/v1/payments/result', { paymentId: st.body.paymentId });
     expect(res.body.status).toBe('Paid');
-    expect(res.body.results.every((r: { ok: boolean }) => r.ok)).toBe(true);
+    expect(res.body.results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(2);
     expect(await bal(s.account.id)).toBe(0n);
+    const list = await c.req('GET', '/api/v1/me/reservations');
+    expect(list.body.reservations.length).toBe(2);
   });
 
-  it('verifies even when Status=NOK; failed verify credits nothing', async () => {
+  it('verifies even when Status=NOK; failed verify reserves nothing', async () => {
     const s = await makeStudent(t.db);
     const o = await makeOffering(t.db, { student: 50_000 });
     const c = await login(s, '10.40.0.2');
@@ -85,40 +89,32 @@ describe('zarinpal cart checkout', () => {
     expect(gw.verifyCalls - before).toBe(1);
     expect((await c.req('POST', '/api/v1/payments/result', { paymentId: st.body.paymentId })).body.status).toBe('Failed');
     expect(await bal(s.account.id)).toBe(0n);
+    expect((await c.req('GET', '/api/v1/me/reservations')).body.reservations).toHaveLength(0);
   });
 
-  it('full credit ⇒ settles instantly without gateway; a sold-out item becomes credit', async () => {
+  it('an item sold out while paying is left owed to the customer (refund due), the rest are reserved', async () => {
     const s = await makeStudent(t.db);
-    await credit(t.db, s.account.id, 100_000n);
     const o1 = await makeOffering(t.db, { student: 30_000 });
     const full = await makeOffering(t.db, { student: 20_000, capacity: 1 });
+    const c = await login(s, '10.40.0.3');
+    const st = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o1, full], idempotencyKey: 'cart-00000003' });
+    const p = (await t.db.execute<{ authority: string }>(sql`SELECT authority FROM payments WHERE id=${st.body.paymentId}`)).rows[0]!;
     const other = await makeStudent(t.db);
     await credit(t.db, other.account.id, 20_000n);
-    const c = await login(s, '10.40.0.3');
-    // price the cart while `full` still has room, then another customer takes the last seat — simulated by reserving directly
     const { reserve } = await import('../../src/services/reserve.js');
     await reserve(t.db, { accountId: other.account.id, group: 'Student', actor: 't' }, full, `take-${full}`);
-    await t.db.execute(sql`UPDATE meal_offerings SET capacity=1 WHERE id=${full}`);
-    const st = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o1, full], idempotencyKey: 'cart-00000003' });
-    expect(st.body.settled).toBe(true);
-    expect(st.body.redirectUrl).toBeNull();
-    expect(st.body.results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(1);
-    expect(await bal(s.account.id)).toBe(70_000n);
+    await t.app.inject({ method: 'GET', url: `/api/v1/payments/zarinpal/callback?pid=${st.body.paymentId}&Authority=${p.authority}&Status=OK` });
+    const res = await c.req('POST', '/api/v1/payments/result', { paymentId: st.body.paymentId });
+    expect(res.body.status).toBe('Paid');
+    expect(res.body.results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(1);
+    expect(await bal(s.account.id)).toBe(20_000n);
   });
 
-  it('enforces the minimum gateway amount by adjusting credit usage', async () => {
+  it('rejects an empty or unavailable cart', async () => {
     const s = await makeStudent(t.db);
-    await credit(t.db, s.account.id, 45_000n);
-    const o = await makeOffering(t.db, { student: 50_000 });
     const c = await login(s, '10.40.0.4');
-    const st = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o], idempotencyKey: 'cart-00000004' });
-    const p = (
-      await t.db.execute<{ amount_rial: bigint; credit_used_rial: bigint }>(
-        sql`SELECT amount_rial, credit_used_rial FROM payments WHERE id=${st.body.paymentId}`,
-      )
-    ).rows[0]!;
-    expect(p.amount_rial).toBe(10_000n);
-    expect(p.credit_used_rial).toBe(40_000n);
+    const r = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: ['00000000-0000-0000-0000-000000000000'], idempotencyKey: 'cart-00000004' });
+    expect(r.status).toBe(400);
   });
 
   it('verify OK but ledger failure ⇒ NeedsReview; SuperAdmin resolves by crediting', async () => {
@@ -145,6 +141,18 @@ describe('zarinpal cart checkout', () => {
 });
 
 describe('payments disabled', () => {
+  it('when the online-payment setting is off, checkout is refused even with a gateway', async () => {
+    await setOnline(false);
+    try {
+      const s = await makeStudent(t.db);
+      const o = await makeOffering(t.db, { student: 50_000 });
+      const c = await login(s, '10.41.0.2');
+      const r = await c.req('POST', '/api/v1/payments/checkout/start', { offeringIds: [o], idempotencyKey: 'cart-00000007' });
+      expect(r.status).toBe(503);
+    } finally {
+      await setOnline(true);
+    }
+  });
   it('without a gateway, online payment is unavailable with finance guidance', async () => {
     const x = await testApp({}, null);
     const s = await makeStudent(x.db);

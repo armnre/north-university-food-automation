@@ -10,6 +10,22 @@ import type { MenuOffering } from '../lib/types';
 
 type Props = { open: boolean; onOpenChange: (o: boolean) => void; cart: MenuOffering[]; onRemove: (id: string) => void; onPaid: () => void };
 
+const STEPS = ['فاکتور', 'پرداخت', 'رسید'] as const;
+function Stepper({ step }: { step: 'invoice' | 'gateway' | 'done' }) {
+  const i = step === 'invoice' ? 0 : step === 'gateway' ? 1 : 2;
+  return (
+    <ol className="mb-4 flex items-center gap-2" aria-label="مراحل پرداخت">
+      {STEPS.map((label, k) => (
+        <li key={label} className="flex flex-1 items-center gap-2">
+          <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors ${k <= i ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{(k + 1).toLocaleString('fa-IR')}</span>
+          <span className={`text-xs ${k === i ? 'font-bold text-foreground' : 'text-muted-foreground'}`}>{label}</span>
+          {k < STEPS.length - 1 && <span className={`h-px flex-1 rounded-full ${k < i ? 'bg-primary' : 'bg-border'}`} />}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPaid }: Props) {
   const { token } = useSession();
   const [step, setStep] = useState<'invoice' | 'gateway' | 'done'>('invoice');
@@ -39,7 +55,8 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
   return (
     <Sheet open={open} onOpenChange={close}>
       <SheetContent side="bottom" dir="rtl" className="mx-auto max-h-[92vh] max-w-lg overflow-y-auto rounded-t-[2rem] px-5 pb-safe pt-3">
-        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-muted" />
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
+        <Stepper step={step} />
         {step === 'invoice' && (
           <>
             <SheetHeader className="text-right"><SheetTitle className="text-xl font-extrabold">فاکتور سفارش</SheetTitle></SheetHeader>
@@ -52,6 +69,7 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
                 </li>
               ))}
             </ul>
+            {!cart.length && <p className="mt-6 rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">سبد خالی است. از منو غذا اضافه کنید.</p>}
             <div className="mt-4 flex items-center justify-between border-t border-dashed pt-4"><span className="text-muted-foreground">مبلغ قابل پرداخت</span><span className="num text-2xl font-extrabold">{rial(total)}</span></div>
             <Button className="mt-5 h-12 w-full rounded-2xl text-base font-bold" disabled={!cart.length} onClick={() => setStep('gateway')}><CreditCard className="ms-2 h-5 w-5" />انتقال به درگاه پرداخت</Button>
           </>
@@ -64,11 +82,19 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
               <div className="relative flex items-center justify-between text-sm text-white/75"><span>پذیرنده: دانشگاه شمال</span><ShieldCheck className="h-5 w-5 text-[hsl(var(--sidebar-primary))]" /></div>
               <div className="relative mt-6 text-xs text-white/70">مبلغ تراکنش</div>
               <div className="num relative text-3xl font-extrabold">{rial(total)}</div>
+              <div className="relative mt-4 flex items-center justify-between border-t border-white/15 pt-3 text-xs text-white/75">
+                <span>{cart.length.toLocaleString('fa-IR')} قلم غذا</span>
+                <span className="rounded-full bg-white/10 px-2.5 py-1 font-medium">سامان کیش · شاپرک</span>
+              </div>
             </div>
-            <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">با زدن «پرداخت» به درگاه امن سامان کیش (سپ) منتقل می‌شوید. پس از پرداخت موفق، رزروها خودکار ثبت و کد رزرو نمایش داده می‌شود.</p>
+            <ul className="mt-4 space-y-2 text-xs text-muted-foreground">
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />پرداخت روی درگاه رسمی سامان کیش (سپ) انجام می‌شود؛ اطلاعات کارت شما در این سامانه وارد یا ذخیره نمی‌شود.</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />پس از پرداخت موفق، رزروها خودکار ثبت و کد رزرو نمایش داده می‌شود.</li>
+            </ul>
+            {busy && <p className="mt-3 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary"><Loader2 className="h-4 w-4 animate-spin" />در حال انتقال امن به درگاه بانک… لطفاً صفحه را نبندید.</p>}
             <div className="mt-5 grid grid-cols-[1fr_2fr] gap-2">
               <Button variant="outline" className="h-12 rounded-2xl" disabled={busy} onClick={() => setStep('invoice')}>بازگشت</Button>
-              <Button className="h-12 rounded-2xl text-base font-bold" disabled={busy} onClick={pay}>{busy ? <Loader2 className="ms-2 h-5 w-5 animate-spin" /> : null}پرداخت</Button>
+              <Button className="h-12 rounded-2xl text-base font-bold" disabled={busy} onClick={pay}>{busy ? <Loader2 className="ms-2 h-5 w-5 animate-spin" /> : <Lock className="ms-2 h-4 w-4" />}پرداخت {rial(total)}</Button>
             </div>
           </>
         )}

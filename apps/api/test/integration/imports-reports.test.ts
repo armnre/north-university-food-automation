@@ -1,3 +1,4 @@
+import { reserve } from '../../src/services/reserve.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import ExcelJS from 'exceljs';
 import { sql } from 'drizzle-orm';
@@ -99,7 +100,7 @@ describe('reports', () => {
     const o = await makeOffering(t.db);
     const sc = new Client(t.app, '10.42.0.1');
     await sc.req('POST', '/api/v1/auth/student/login', { studentNumber: s.sn, nationalId: s.nid });
-    expect((await sc.req('POST', '/api/v1/me/reserve', { offeringId: o, idempotencyKey: `k-${uniq()}` })).status).toBe(200);
+    await reserve(t.db, { accountId: s.account.id, group: 'Student', actor: 't' }, o, `k-${uniq()}`); // paid (credited) reservation
     await t.db.execute(sql`UPDATE foods SET name='=HYPERLINK("x")' WHERE id=(SELECT food_id FROM meal_offerings WHERE id=${o})`);
     const d = (await t.db.execute<{ d: string }>(sql`SELECT service_date::text d FROM meal_offerings WHERE id=${o}`)).rows[0]!.d;
     const sum = await nutrition.req('GET', `/api/v1/reports/summary?from=${d}&to=${d}`);

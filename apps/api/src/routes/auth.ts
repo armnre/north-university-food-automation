@@ -127,6 +127,8 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
     app.post(`/api/v1/auth/${kind}/login`, { config: { access: 'public' } }, async (req, reply) => {
       const b = z.object({ username: z.coerce.string().trim().max(50), password: z.string().max(128), kind: z.enum(['Staff', 'Faculty']).optional(), ...captchaFields }).parse(req.body);
       // Employees sign in with personnel / kargozini number + national ID; accept Persian/Arabic digits.
+      // Temporary passwords contain '-', which normalisation strips, so the raw form is tried as well.
+      const rawPassword = b.password;
       if (kind === 'employee') b.password = normalizeDigits(b.password).trim();
       const ip = ipOf(req);
       const uname = normalizeDigits(b.username).toLowerCase();
@@ -138,7 +140,7 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
           .from(table)
           .where(sql`lower(${table.username}) = ${uname}`)
           .limit(1);
-        const ok = await verifyPassword(u?.passwordHash, b.password);
+        const ok = (await verifyPassword(u?.passwordHash, b.password)) || (kind === 'employee' && rawPassword !== b.password && !!u && (await verifyPassword(u.passwordHash, rawPassword)));
         if (ok && u && kind === 'employee' && b.kind) {
           const k = await db.execute<{ kind: string }>(sql`SELECT kind::text AS kind FROM employees WHERE id=${u.id}`);
           const actual = k.rows[0]?.kind;

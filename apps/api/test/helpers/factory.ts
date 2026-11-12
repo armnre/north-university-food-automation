@@ -1,3 +1,4 @@
+import { normalizeDigits } from '@food/shared';
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../../src/db/client.js';
 import { accounts, employees, staffUsers, students } from '../../src/db/schema.js';
@@ -45,6 +46,8 @@ export async function makeStaff(db: Db, role: (typeof staffUsers.$inferInsert)['
     .returning();
   return u!;
 }
+/** Employee logins normalise digits and strip separators, so the stored hash must match the normalised form. */
+let empHash: string | undefined;
 export async function makeEmployee(db: Db, extra: Partial<typeof employees.$inferInsert> = {}) {
   const [e] = await db
     .insert(employees)
@@ -52,7 +55,7 @@ export async function makeEmployee(db: Db, extra: Partial<typeof employees.$infe
       username: `e${uniq()}`,
       firstName: 'علی',
       lastName: 'رضایی',
-      passwordHash: await (pwHash ??= hashPassword(STAFF_PASSWORD)),
+      passwordHash: await (empHash ??= hashPassword(normalizeDigits(STAFF_PASSWORD))),
       mustChangePassword: false,
       ...extra,
     })

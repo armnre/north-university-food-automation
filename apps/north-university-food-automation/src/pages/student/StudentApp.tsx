@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { Bell, CalendarDays, HelpCircle, Home, ReceiptText, UserRound, Wallet } from 'lucide-react';
+import { Bell, CalendarDays, HelpCircle, Home, ReceiptText, UserRound } from 'lucide-react';
 import { studentNotifications } from '../../lib/api';
 import Shell, { type NavItem } from '../../components/Shell';
 import { CUSTOMER_KIND_LABEL, useSession, type StudentMe } from '../../lib/session';
 import StudentDashboard from './StudentDashboard';
 import MenuPage from './MenuPage';
 import MyReservations from './MyReservations';
-import WalletPage from './WalletPage';
 import NotificationsPage from './NotificationsPage';
 import ProfilePage from './ProfilePage';
 import PaymentResultPage from './PaymentResultPage';
@@ -16,7 +15,6 @@ const items: NavItem[] = [
   { to: '/', label: 'خانه', icon: <Home />, mobile: true },
   { to: '/menu', label: 'منوی غذا', icon: <CalendarDays />, mobile: true },
   { to: '/reservations', label: 'رزروها', icon: <ReceiptText />, mobile: true },
-  { to: '/wallet', label: 'کیف پول', icon: <Wallet />, mobile: true },
   { to: '/profile', label: 'پروفایل', icon: <UserRound />, mobile: true },
   { to: '/notifications', label: 'اعلان‌ها', icon: <Bell /> },
   { to: '/help', label: 'راهنما و پشتیبانی', icon: <HelpCircle /> },
@@ -48,7 +46,7 @@ export default function StudentApp({ me }: { me: StudentMe }) {
         <Route path="/" element={<StudentDashboard me={me} />} />
         <Route path="/menu" element={<MenuPage />} />
         <Route path="/reservations" element={<MyReservations />} />
-        <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/wallet" element={<Navigate to="/reservations" replace />} />
         <Route path="/notifications" element={<NotificationsPage mode="notifications" />} />
         <Route path="/help" element={<NotificationsPage mode="help" />} />
         <Route path="/profile" element={<ProfilePage me={me} />} />

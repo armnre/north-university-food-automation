@@ -8,7 +8,6 @@ import { randomToken } from '../lib/crypto.js';
 import { fail } from '../lib/errors.js';
 import { audit } from '../services/audit.js';
 import { cancelReservationInTx } from '../services/cancel.js';
-import { reserve } from '../services/reserve.js';
 import { bool, getSettings, num } from '../services/settings.js';
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -64,12 +63,8 @@ export function meRoutes(app: FastifyInstance, db: Db) {
     };
   });
 
-  app.post('/api/v1/me/reserve', reserveLimit, async (req) => {
-    const c = await currentCustomer(db, req);
-    const b = z.object({ offeringId: z.string().uuid(), idempotencyKey: z.string().min(8).max(80) }).parse(req.body);
-    const r = await reserve(db, c, b.offeringId, `${c.accountId}:${b.idempotencyKey}`);
-    return { reservationId: r.reservationId, code: r.code, replay: r.replay };
-  });
+  // No wallet: every reservation goes through /payments/checkout/start and is paid at the gateway.
+  app.post('/api/v1/me/reserve', reserveLimit, async () => fail('BAD_REQUEST', 'رزرو فقط از طریق پرداخت اینترنتی انجام می‌شود.'));
 
   app.get('/api/v1/me/reservations', self, async (req) => {
     const c = await currentCustomer(db, req);
@@ -123,7 +118,7 @@ export function meRoutes(app: FastifyInstance, db: Db) {
       if (cancelDeadlineOf(row, num(s, 'cancel_cutoff_hours')).getTime() <= Date.now()) fail('BAD_REQUEST', 'مهلت لغو این رزرو گذشته است.');
       const out = await cancelReservationInTx(tx, id, c.actor, 'لغو توسط مشتری');
       await tx.execute(
-        sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${c.accountId}, 'لغو رزرو', ${`رزرو شما لغو شد و مبلغ ${out.refund.toString()} ریال به اعتبار شما برگشت.`}, 'refund')`,
+        sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${c.accountId}, 'لغو رزرو', ${`رزرو شما لغو شد و مبلغ ${out.refund.toString()} ریال توسط امور مالی تغذیه به شما بازگردانده می‌شود.`}, 'refund')`,
       );
       return { ok: true, refundRial: n(out.refund), replay: false };
     });

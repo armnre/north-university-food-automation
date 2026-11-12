@@ -29,7 +29,7 @@ export const PERMISSIONS = {
   staffManage: 'مدیریت کاربران کارکنان',
   settingsWrite: 'ویرایش تنظیمات',
   auditRead: 'مشاهده رخدادهای حسابرسی',
-  selfService: 'منو، رزرو، کیف پول و اعلان‌های شخصی',
+  selfService: 'منو، رزرو، پرداخت و اعلان‌های شخصی',
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 

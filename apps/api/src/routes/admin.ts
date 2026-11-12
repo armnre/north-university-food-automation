@@ -121,6 +121,26 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     });
   });
 
+  /** No wallet: any positive customer balance is money owed back (cancellations, failed items). Finance pays it out and records it. */
+  app.get('/api/v1/finance/refunds-due', { config: { access: 'financeRead' } }, async () => {
+    const r = await db.execute<Record<string, unknown>>(sql`
+      SELECT a.id, a.balance_rial, s.student_number, e.username,
+        COALESCE(s.first_name||' '||s.last_name, e.first_name||' '||e.last_name, a.code) AS owner,
+        (SELECT max(le.created_at) FROM ledger_entries le WHERE le.account_id=a.id) AS last_at
+      FROM accounts a LEFT JOIN students s ON s.id=a.student_id LEFT JOIN employees e ON e.id=a.employee_id
+      WHERE a.kind='Customer' AND a.balance_rial > 0 ORDER BY last_at DESC NULLS LAST LIMIT 500`);
+    return {
+      refunds: r.rows.map((x) => ({
+        accountId: x.id as string,
+        amountRial: n(x.balance_rial as bigint),
+        studentNumber: (x.student_number as string | null) ?? null,
+        employeeUsername: (x.username as string | null) ?? null,
+        owner: String(x.owner ?? ''),
+        lastAt: x.last_at ? iso(x.last_at as Date) : null,
+      })),
+    };
+  });
+
   // ── staff users ────────────────────────────────────────────────────────
   app.get('/api/v1/staff', { config: { access: 'staffManage' } }, async (req) => {
     const role = staffRole(req);

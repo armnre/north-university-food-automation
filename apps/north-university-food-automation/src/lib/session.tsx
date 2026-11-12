@@ -6,7 +6,7 @@ export type StaffMe = { id: string; username: string; fullName: string; role: st
 type Me = { kind: 'student'; student: StudentMe } | { kind: 'staff'; staff: StaffMe };
 type Raw = Me | { kind: 'employee'; employee: { id: string; username: string; fullName: string; employeeKind: string; mustChangePassword: boolean } };
 
-/** Employees use the same self-service screens as students (menu, wallet, reservations). */
+/** Employees use the same self-service screens as students (menu, reservations). */
 function normalize(r: Raw): { me: Me; must: boolean } {
   if (r.kind === 'employee') {
     const e = r.employee;

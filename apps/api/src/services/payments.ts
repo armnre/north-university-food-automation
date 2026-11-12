@@ -5,12 +5,12 @@ import { audit } from './audit.js';
 import type { PaymentGateway } from './gateway.js';
 import { postLedger, systemAccountId } from './ledger.js';
 import { reserveInTx, type Customer } from './reserve.js';
-import { getSettings, num } from './settings.js';
+import { bool, getSettings, num } from './settings.js';
 
 type Item = { offeringId: string; priceRial: string };
 export type ItemResult = { offeringId: string; ok: boolean; code?: string; error?: string };
 
-/** Prices the cart for the customer's group and decides how much existing credit to use and how much goes to the gateway. */
+/** Prices the cart for the customer's group. There is no wallet: the whole total is paid at the gateway. */
 export async function priceCart(db: Db, c: Customer, offeringIds: string[]) {
   const ids = [...new Set(offeringIds)];
   const r = await db.execute<{ id: string; price_rial: bigint | null; status: string; reserve_deadline: string }>(sql`
@@ -21,15 +21,10 @@ export async function priceCart(db: Db, c: Customer, offeringIds: string[]) {
   }
   const items: Item[] = r.rows.map((x) => ({ offeringId: x.id, priceRial: x.price_rial!.toString() }));
   const total = items.reduce((s, i) => s + BigInt(i.priceRial), 0n);
-  const bal = (await db.execute<{ balance_rial: bigint }>(sql`SELECT balance_rial FROM accounts WHERE id=${c.accountId}`)).rows[0]!.balance_rial;
   const min = BigInt(num(await getSettings(db), 'min_gateway_payable_rial'));
-  let credit = bal < total ? bal : total;
-  let payable = total - credit;
-  if (payable > 0n && payable < min) {
-    credit = total > min ? total - min : 0n;
-    payable = total - credit;
-  }
-  if (payable > 0n && payable < min) fail('BAD_REQUEST', `حداقل مبلغ قابل پرداخت آنلاین ${min.toString()} ریال است.`);
+  const credit = 0n;
+  const payable = total;
+  if (payable > 0n && payable < min) fail('BAD_REQUEST', `حداقل مبلغ قابل پرداخت اینترنتی ${min.toString()} ریال است.`);
   return { items, total, credit, payable };
 }
 
@@ -60,7 +55,8 @@ export async function startCheckout(db: Db, gw: PaymentGateway | null, c: Custom
       settled: prior.rows[0].status !== 'Pending',
     };
   const cart = await priceCart(db, c, offeringIds);
-  if (cart.payable > 0n && !gw) fail('UNAVAILABLE', 'پرداخت آنلاین فعلاً غیرفعال است. برای افزایش اعتبار به امور مالی مراجعه کنید.');
+  if (cart.payable > 0n && (!gw || !bool(await getSettings(db), 'online_payment_enabled')))
+    fail('UNAVAILABLE', 'پرداخت اینترنتی در حال حاضر غیرفعال است. لطفاً بعداً دوباره تلاش کنید یا با امور مالی تغذیه تماس بگیرید.');
   const ins = await db.execute<{ id: string }>(sql`INSERT INTO payments (account_id, amount_rial, credit_used_rial, items, status)
     VALUES (${c.accountId}, ${cart.payable.toString()}::bigint, ${cart.credit.toString()}::bigint, ${JSON.stringify({ key: idempotencyKey, list: cart.items })}::jsonb, 'Pending') RETURNING id`);
   const paymentId = ins.rows[0]!.id;
@@ -72,7 +68,7 @@ export async function startCheckout(db: Db, gw: PaymentGateway | null, c: Custom
     data: { total: cart.total.toString(), credit: cart.credit.toString(), payable: cart.payable.toString(), items: cart.items.length },
   });
   if (cart.payable === 0n) {
-    // fully covered by existing refund credit — settle immediately, no gateway
+    // free items — nothing to pay, reserve immediately
     const results = await reserveItems(db, c, paymentId, cart.items);
     await db.execute(sql`UPDATE payments SET status='Paid', settled_at=now(), updated_at=now() WHERE id=${paymentId}`);
     return { paymentId, redirectUrl: null, settled: true, results };
@@ -160,7 +156,7 @@ export async function settlePayment(db: Db, gw: PaymentGateway, paymentId: strin
   const failed = results.filter((r) => !r.ok).length;
   if (failed)
     await db.execute(
-      sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${(customer as unknown as Customer).accountId}, 'رزرو ناقص', ${`${failed} قلم از سبد شما رزرو نشد و مبلغ آن به اعتبار شما اضافه شد.`}, 'refund')`,
+      sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${(customer as unknown as Customer).accountId}, 'رزرو ناقص', ${`${failed} قلم از سبد شما رزرو نشد و مبلغ آن توسط امور مالی تغذیه به شما بازگردانده می‌شود.`}, 'refund')`,
     );
   return { status: 'Paid', results };
 }

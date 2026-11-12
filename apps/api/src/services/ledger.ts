@@ -45,7 +45,7 @@ export async function postLedger(tx: Tx, p: PostInput): Promise<{ transactionId:
       UPDATE accounts SET balance_rial = balance_rial + ${l.amount.toString()}::bigint, updated_at = now()
       WHERE id = ${l.accountId} AND (kind = 'System' OR balance_rial + ${l.amount.toString()}::bigint >= 0)
       RETURNING balance_rial`);
-    if (!u.rows[0]) fail('PAYMENT_REQUIRED', 'موجودی کیف پول کافی نیست.');
+    if (!u.rows[0]) fail('PAYMENT_REQUIRED', 'پرداخت این رزرو تأیید نشده است.');
     await tx.execute(
       sql`INSERT INTO ledger_entries (transaction_id, account_id, amount_rial, balance_after) VALUES (${txId}, ${l.accountId}, ${l.amount.toString()}::bigint, ${u.rows[0].balance_rial.toString()}::bigint)`,
     );

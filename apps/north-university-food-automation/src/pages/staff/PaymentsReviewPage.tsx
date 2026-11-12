@@ -40,7 +40,7 @@ export default function PaymentsReviewPage() {
                 {p.note && <div className="text-xs">{p.note}</div>}
               </div>
               <div className="flex gap-2">
-                <Button onClick={() => setTarget({ p, action: 'credit' })}>واریز به کیف پول</Button>
+                <Button onClick={() => setTarget({ p, action: 'credit' })}>تأیید پرداخت (ثبت برای استرداد)</Button>
                 <Button variant="outline" onClick={() => setTarget({ p, action: 'mark-failed' })}>علامت ناموفق</Button>
               </div>
             </div>
@@ -60,7 +60,7 @@ function ResolveDialog({ target, onClose, onDone }: { target: { p: Payment; acti
     setBusy(true);
     try {
       await paymentResolve({ id: target.p.id, action: target.action, note: note.trim() });
-      toast.success(credit ? 'مبلغ به کیف پول واریز شد.' : 'پرداخت ناموفق ثبت شد.');
+      toast.success(credit ? 'پرداخت تأیید شد و در فهرست استردادهای امور مالی قرار گرفت.' : 'پرداخت ناموفق ثبت شد.');
       onClose(); onDone();
     } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
@@ -68,7 +68,7 @@ function ResolveDialog({ target, onClose, onDone }: { target: { p: Payment; acti
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent dir="rtl">
         <DialogHeader>
-          <DialogTitle>{credit ? 'واریز به کیف پول' : 'ثبت پرداخت ناموفق'}</DialogTitle>
+          <DialogTitle>{credit ? 'تأیید پرداخت (ثبت برای استرداد)' : 'ثبت پرداخت ناموفق'}</DialogTitle>
           <DialogDescription>{credit ? `مبلغ ${rial(target.p.amountRial)} به حساب ${target.p.owner} واریز می‌شود. این کار قابل بازگشت نیست.` : 'هیچ مبلغی واریز نمی‌شود. اگر پول از حساب مشتری کسر شده، از طریق درگاه بازگردانده می‌شود.'}</DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">

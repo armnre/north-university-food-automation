@@ -82,7 +82,7 @@ export default function AdminDashboard() {
               <div><dt className="text-muted-foreground">شارژهای دستی</dt><dd className="num mt-1 font-bold">{rial(data.money.credits)}</dd></div>
               <div><dt className="text-muted-foreground">کسر بابت رزرو</dt><dd className="num mt-1 font-bold">{rial(data.money.debits)}</dd></div>
               <div><dt className="text-muted-foreground">بازپرداخت‌ها</dt><dd className="num mt-1 font-bold">{rial(data.money.refunds)}</dd></div>
-              <div><dt className="text-muted-foreground">مجموع موجودی کیف پول‌ها</dt><dd className="num mt-1 font-bold">{rial(data.money.liability)}</dd></div>
+              <div><dt className="text-muted-foreground">مبالغ در انتظار استرداد</dt><dd className="num mt-1 font-bold">{rial(data.money.liability)}</dd></div>
             </dl>
           </Section>
         )}

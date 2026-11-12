@@ -143,7 +143,7 @@ async function closeOffering(db: Db, actor: string, offeringId: string, mode: 'S
         count++;
         total += out.refund;
         await tx.execute(
-          sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${out.accountId}, ${mode === 'SoldOut' ? 'اتمام غذا' : 'لغو وعده'}, ${`${reason} — مبلغ ${out.refund.toString()} ریال به اعتبار شما برگشت.`}, 'refund')`,
+          sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${out.accountId}, ${mode === 'SoldOut' ? 'اتمام غذا' : 'لغو وعده'}, ${`${reason} — مبلغ ${out.refund.toString()} ریال توسط امور مالی تغذیه به شما بازگردانده می‌شود.`}, 'refund')`,
         );
       }
     });
@@ -295,7 +295,7 @@ export function offeringRoutes(app: FastifyInstance, db: Db) {
     return db.transaction(async (tx) => {
       const out = await cancelReservationInTx(tx, id, p.actor, `لغو اداری: ${b.reason}`);
       await tx.execute(
-        sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${out.accountId}, 'لغو رزرو', ${`رزرو شما لغو شد (${b.reason}) و مبلغ ${out.refund.toString()} ریال به اعتبار شما برگشت.`}, 'refund')`,
+        sql`INSERT INTO notifications (account_id, title, body, kind) VALUES (${out.accountId}, 'لغو رزرو', ${`رزرو شما لغو شد (${b.reason}) و مبلغ ${out.refund.toString()} ریال توسط امور مالی تغذیه به شما بازگردانده می‌شود.`}, 'refund')`,
       );
       return { ok: true, refundRial: n(out.refund) };
     });

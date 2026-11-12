@@ -12,7 +12,7 @@ export default function SiteFooter() {
   const [open, setOpen] = useState<null | 'about' | 'contact' | 'rules'>(null);
   useEffect(() => { publicInfo({}).then((r) => setInfo(r as Info)).catch(() => setInfo(null)); }, []);
   const pages = {
-    about: { title: 'درباره ما', body: info?.helpText || 'سامانه رسمی رزرو غذا، کیف پول و تحویل غذای سلف مرکزی دانشگاه شمال؛ زیر نظر معاونت دانشجویی و فرهنگی دانشگاه.' },
+    about: { title: 'درباره ما', body: info?.helpText || 'سامانه رسمی رزرو، پرداخت اینترنتی و تحویل غذای سلف مرکزی دانشگاه شمال؛ زیر نظر معاونت دانشجویی و فرهنگی دانشگاه.' },
     contact: { title: 'تماس با ما', body: info?.supportText || 'اداره تغذیه دانشگاه شمال' },
     rules: { title: 'قوانین و مقررات', body: info?.policyText || 'رزرو غذا تا ۴۸ ساعت پیش از هر وعده امکان‌پذیر است. مبالغ پرداختی از طریق درگاه رسمی بانک سامان دریافت می‌شود.' },
   } as const;

@@ -59,9 +59,9 @@ export default function ManagementReports({ from, to }: { from: string; to: stri
         <StatCard label="رزرو / تحویل" value={`${faNum(tot.reserved)} / ${faNum(tot.delivered)}`} hint={`نرخ مراجعه ${pct(tot.delivered, tot.delivered + tot.noShow)}`} />
         <StatCard label="لغو / عدم مراجعه" value={`${faNum(tot.cancelled)} / ${faNum(tot.noShow)}`} />
         <StatCard label="دانشجویان فعال در بازه" value={faNum(data.students.engaged)} hint={`از ${faNum(data.students.active)} دانشجوی فعال · ${pct(data.students.engaged, data.students.active)}`} />
-        <StatCard label="واریز به کیف پول‌ها" value={rial(credits)} />
-        <StatCard label="برداشت از کیف پول‌ها" value={rial(debits)} />
-        {data.wallets && <StatCard label="مانده‌ی کل کیف پول‌ها" value={rial(data.wallets.totalRial)} hint={`${faNum(data.wallets.positive)} دارای موجودی · ${faNum(data.wallets.negative)} منفی`} />}
+        <StatCard label="دریافتی‌ها و بازگشت‌ها" value={rial(credits)} />
+        <StatCard label="کسر بابت رزرو و استرداد" value={rial(debits)} />
+        {data.wallets && <StatCard label="مبالغ در انتظار استرداد" value={rial(data.wallets.totalRial)} hint={`${faNum(data.wallets.positive)} دارای موجودی · ${faNum(data.wallets.negative)} منفی`} />}
         <StatCard label="وضعیت دانشجویان" value={faNum(data.students.total)} hint={`فعال ${faNum(data.students.active)} · غیرفعال ${faNum(data.students.inactive)} · حذف ${faNum(data.students.removed)}`} />
       </div>
 

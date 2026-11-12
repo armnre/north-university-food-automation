@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, QrCode, UtensilsCrossed, Wallet as WalletIcon } from 'lucide-react';
-import { studentReservations, studentWallet } from '../../lib/api';
+import { ArrowLeft, CalendarDays, QrCode, UtensilsCrossed, CreditCard } from 'lucide-react';
+import { studentReservations } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { ErrorState, LoadingBlock, Pill, Section, StatCard, EmptyState } from '../../components/ui-kit';
 import QrDialog, { type QrTarget } from '../../components/QrDialog';
-import { MEALS, RES_STATUS, faDate, faNum, rial } from '../../lib/format';
+import { MEALS, RES_STATUS, faDate, faNum } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import type { StudentMe } from '../../lib/session';
-import type { MyReservations, Wallet } from '../../lib/types';
+import type { MyReservations } from '../../lib/types';
 
 export default function StudentDashboard({ me }: { me: StudentMe }) {
   const { data, error, loading, reload } = useLoad(async (token) => {
-    const [w, r] = await Promise.all([studentWallet({ token }), studentReservations({ token })]);
-    return { w: w as Wallet, r: r as MyReservations };
+    const r = await studentReservations({ token });
+    return { r: r as MyReservations };
   });
   const [qr, setQr] = useState<QrTarget | null>(null);
   if (loading) return <LoadingBlock />;
@@ -30,15 +30,15 @@ export default function StudentDashboard({ me }: { me: StudentMe }) {
             <p className="text-sm text-primary-foreground/75">{faDate(data.r.today)}</p>
             <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">سلام، {me.fullName.split(' ')[0] || (me.customerKind && me.customerKind !== 'Student' ? 'همکار گرامی' : 'دانشجوی گرامی')} 👋</h1>
           </div>
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/10 text-[hsl(var(--sidebar-primary))]"><WalletIcon className="h-5 w-5" /></span>
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/10 text-[hsl(var(--sidebar-primary))]"><CreditCard className="h-5 w-5" /></span>
         </div>
         <div className="relative mt-6">
-          <p className="text-xs text-primary-foreground/70">موجودی کیف پول</p>
-          <p className="num mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{rial(data.w.balanceRial)}</p>
+          <p className="text-lg font-bold">غذای خود را انتخاب کنید و همان‌جا آنلاین پرداخت کنید.</p>
+          <p className="mt-1 text-xs text-primary-foreground/70">پرداخت امن از طریق درگاه سامان کیش (سپ)</p>
         </div>
         <div className="relative mt-5 grid grid-cols-2 gap-2 sm:flex">
           <Button asChild className="h-11 rounded-xl bg-[hsl(var(--sidebar-primary))] font-semibold text-[hsl(var(--sidebar-primary-foreground))] hover:bg-[hsl(var(--sidebar-primary)/0.9)]"><Link to="/menu"><CalendarDays className="ms-1 h-4 w-4" />رزرو غذا</Link></Button>
-          <Button asChild variant="ghost" className="h-11 rounded-xl bg-white/10 text-white hover:bg-white/20 hover:text-white"><Link to="/wallet">تراکنش‌ها</Link></Button>
+          <Button asChild variant="ghost" className="h-11 rounded-xl bg-white/10 text-white hover:bg-white/20 hover:text-white"><Link to="/reservations">رزروهای من</Link></Button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:gap-4">

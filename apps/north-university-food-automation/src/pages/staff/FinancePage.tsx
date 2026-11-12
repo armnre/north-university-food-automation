@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, LoadingBlock, PageHeader, Section } from '../..
 import { LEDGER_TYPES, downloadCsv, errMsg, faDateTime, faDigits, faNum, newKey, rial } from '../../lib/format';
 import { useLoad } from '../../lib/useLoad';
 import { useSession } from '../../lib/session';
+import RefundsDue from '../../components/RefundsDue';
 
 type Entry = { id: string; trackingCode: string; type: string; amountRial: number; balanceAfter: number; reason: string; createdAt: string; studentNumber: string | null; owner: string; actor: string | null };
 type Data = { entries: Entry[]; hasMore: boolean; reconciliation: { healthy: boolean; unbalanced: number; drift: number } };
@@ -49,6 +50,7 @@ export default function FinancePage() {
           </div>
         </div>
       )}
+      <RefundsDue canWrite={canWrite} onChanged={reload} />
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Select value={type} onValueChange={(v) => { setType(v); setPage(0); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>همه‌ی انواع</SelectItem>{Object.entries(LEDGER_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select>
         <Input placeholder="شماره دانشجویی یا شناسه پیگیری" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />

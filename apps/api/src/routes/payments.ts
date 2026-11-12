@@ -72,7 +72,7 @@ export function paymentRoutes(app: FastifyInstance, db: Db, env: Env, gw: Paymen
           offeringId: i.offeringId,
           ok: !!r,
           code: r?.code.replace(/^R-/, ''),
-          error: r || p.status !== 'Paid' ? undefined : 'رزرو انجام نشد؛ مبلغ به اعتبار شما اضافه شد.',
+          error: r || p.status !== 'Paid' ? undefined : 'رزرو انجام نشد؛ مبلغ این قلم توسط امور مالی به شما بازگردانده می‌شود.',
         };
       }),
     };

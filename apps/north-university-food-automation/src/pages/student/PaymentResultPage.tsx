@@ -7,7 +7,7 @@ import { paymentResult, type StudentCheckoutOutputType } from '../../lib/api';
 import { errMsg, rial, showCode } from '../../lib/format';
 import { ErrorState, LoadingBlock, Section } from '../../components/ui-kit';
 
-/** Landing page after Zarinpal redirects back. The server has already verified; this only reads the outcome. */
+/** Landing page after the Saman gateway redirects back. The server has already verified; this only reads the outcome. */
 export default function PaymentResultPage() {
   const [params] = useSearchParams();
   const pid = params.get('pid');
@@ -27,7 +27,7 @@ export default function PaymentResultPage() {
       <h1 className="mt-4 text-xl font-extrabold">{paid ? 'پرداخت موفق' : review ? 'پرداخت در حال بررسی' : 'پرداخت ناموفق'}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {paid ? <>کد پیگیری <span dir="ltr" className="font-mono">{data.trackingCode ?? '—'}</span> · مبلغ {rial(data.paidRial)}</>
-          : review ? 'نتیجه‌ی این پرداخت قطعی نشده؛ پس از بررسی، رزرو انجام یا مبلغ به کیف پول برگردانده می‌شود.'
+          : review ? 'نتیجه‌ی این پرداخت قطعی نشده؛ پس از بررسی، رزرو انجام یا مبلغ به شما بازگردانده می‌شود.'
           : 'مبلغی از حساب شما برداشت نشد یا به‌طور خودکار برمی‌گردد.'}
       </p>
       {paid && (

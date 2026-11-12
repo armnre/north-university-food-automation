@@ -196,7 +196,7 @@ export function authRoutes(app: FastifyInstance, db: Db, env: Env) {
         username: u!.username,
         fullName: u!.fullName,
         role: u!.role,
-        perms: [...ROLE_PERMISSIONS[u!.role]],
+        perms: [...(ROLE_PERMISSIONS[u!.role as keyof typeof ROLE_PERMISSIONS] ?? [])],
         cafeteriaId: u!.cafeteriaId,
         mustChangePassword: u!.mustChangePassword,
       },

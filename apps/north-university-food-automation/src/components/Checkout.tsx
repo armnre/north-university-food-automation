@@ -65,7 +65,7 @@ export default function CheckoutSheet({ open, onOpenChange, cart, onRemove, onPa
               <div className="relative mt-6 text-xs text-white/70">مبلغ تراکنش</div>
               <div className="num relative text-3xl font-extrabold">{rial(total)}</div>
             </div>
-            <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">با زدن «پرداخت» به درگاه امن زرین‌پال منتقل می‌شوید. اگر اعتبار کیف پول کافی باشد، بدون درگاه از اعتبار کسر می‌شود.</p>
+            <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">با زدن «پرداخت» به درگاه امن سامان کیش (سپ) منتقل می‌شوید. اگر اعتبار کیف پول کافی باشد، بدون درگاه از اعتبار کسر می‌شود.</p>
             <div className="mt-5 grid grid-cols-[1fr_2fr] gap-2">
               <Button variant="outline" className="h-12 rounded-2xl" disabled={busy} onClick={() => setStep('invoice')}>بازگشت</Button>
               <Button className="h-12 rounded-2xl text-base font-bold" disabled={busy} onClick={pay}>{busy ? <Loader2 className="ms-2 h-5 w-5 animate-spin" /> : null}پرداخت</Button>

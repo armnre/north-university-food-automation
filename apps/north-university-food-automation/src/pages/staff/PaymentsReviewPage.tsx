@@ -27,7 +27,7 @@ export default function PaymentsReviewPage() {
   };
   return (
     <>
-      <PageHeader title="پرداخت‌های نیازمند بررسی" subtitle="پرداخت‌هایی که درگاه تأیید کرده ولی ثبت خودکار آن‌ها کامل نشده است. پیش از تصمیم، رسید را در پنل زرین‌پال با کد پیگیری بررسی کنید."
+      <PageHeader title="پرداخت‌های نیازمند بررسی" subtitle="پرداخت‌هایی که درگاه تأیید کرده ولی ثبت خودکار آن‌ها کامل نشده است. پیش از تصمیم، رسید را در پنل پذیرندگی سامان کیش با شماره مرجع بررسی کنید."
         actions={<Button variant="outline" onClick={reconcile} disabled={syncing}>{syncing ? <Loader2 className="ms-1 h-4 w-4 animate-spin" /> : <RefreshCw className="ms-1 h-4 w-4" />}استعلام پرداخت‌های معلق</Button>} />
       {loading ? <LoadingBlock /> : error ? <ErrorState message={error} onRetry={reload} /> : !data?.payments.length ? <EmptyState title="موردی برای بررسی نیست" text="همه‌ی پرداخت‌ها تعیین تکلیف شده‌اند." /> : (
         <div className="grid gap-3">
@@ -73,7 +73,7 @@ function ResolveDialog({ target, onClose, onDone }: { target: { p: Payment; acti
         </DialogHeader>
         <div className="space-y-1.5">
           <Label>توضیح و مستند (حداقل ۵ نویسه)</Label>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: در پنل زرین‌پال تأیید شد" />
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثلاً: در پنل سامان کیش تأیید شد" />
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>انصراف</Button>

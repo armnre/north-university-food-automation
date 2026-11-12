@@ -17,7 +17,7 @@ type Data = { values: Values; mealSlots: Slot[] };
 
 const TOGGLES: [string, string, string][] = [
   ['student_cancellation_enabled', 'لغو رزرو توسط دانشجو', 'اگر خاموش باشد فقط کارکنان می‌توانند رزرو را لغو کنند.'],
-  ['online_payment_enabled', 'پرداخت اینترنتی (زرین‌پال)', 'خاموش: خرید فقط با موجودی کیف پول.'],
+  ['online_payment_enabled', 'پرداخت اینترنتی (سامان کیش)', 'خاموش: خرید فقط با موجودی کیف پول.'],
   ['noshow_refund', 'بازپرداخت عدم مراجعه', 'رزرو تحویل‌نشده پس از پایان وعده بازپرداخت شود.'],
 ];
 const NUMBERS: [string, string, string][] = [

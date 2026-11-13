@@ -154,7 +154,8 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     return {
       cafeterias: cfs.rows.map((x) => ({ id: x.id, name: x.name })),
       contractors: cts.rows.map((x) => ({ id: x.id, name: x.name })),
-      staff: r.rows.map((x) => ({
+      // Each role sees only the accounts it may manage (SuperAdmin sees everyone).
+      staff: r.rows.filter((x) => role === 'SuperAdmin' || canManage(role, x.role as StaffRole)).map((x) => ({
         id: x.id,
         username: x.username,
         fullName: x.full_name,

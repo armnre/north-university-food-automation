@@ -32,14 +32,25 @@ export function ChangePasswordScreen() {
   const [f, setF] = useState({ current: '', next: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [tried, setTried] = useState(false);
   const mismatch = !!f.confirm && f.next !== f.confirm;
-  const valid = !!f.current && f.next.length >= 10 && f.next === f.confirm;
-  const submit = async (e: React.FormEvent) => {
+  const tooShort = f.next.length > 0 && f.next.length < 10;
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!valid) return;
+    setTried(true);
+    // Read straight from the form too, so browser/password-manager autofill (which may skip onChange) still counts.
+    const fd = new FormData(e.currentTarget);
+    const cur = String(fd.get('current') ?? f.current);
+    const next = String(fd.get('next') ?? f.next);
+    const confirm = String(fd.get('confirm') ?? f.confirm);
+    setF({ current: cur, next, confirm });
+    if (!cur) return setErr('رمز فعلی را وارد کنید.');
+    if (next.length < 10) return setErr('رمز جدید باید حداقل ۱۰ نویسه باشد.');
+    if (next !== confirm) return setErr('تکرار رمز جدید یکسان نیست.');
+    if (next === cur) return setErr('رمز جدید باید با رمز فعلی متفاوت باشد.');
     setBusy(true); setErr('');
     try {
-      await authChangePassword({ currentPassword: f.current, newPassword: f.next });
+      await authChangePassword({ currentPassword: cur, newPassword: next });
       toast.success('رمز عبور تغییر کرد.');
       await signIn();
     } catch (e2) { setErr(errMsg(e2)); } finally { setBusy(false); }
@@ -52,12 +63,13 @@ export function ChangePasswordScreen() {
         {(['current', 'next', 'confirm'] as const).map((k) => (
           <div key={k} className="space-y-1.5">
             <Label htmlFor={k}>{labels[k]}</Label>
-            <Input id={k} type="password" dir="ltr" className="h-11 rounded-xl" autoComplete={k === 'current' ? 'current-password' : 'new-password'} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} aria-invalid={k === 'confirm' && mismatch} />
+            <Input id={k} name={k} type="password" dir="ltr" className="h-11 rounded-xl" autoComplete={k === 'current' ? 'current-password' : 'new-password'} value={f[k]} onChange={(e) => { const v = e.target.value; setF((p) => ({ ...p, [k]: v })); }} aria-invalid={(k === 'confirm' && mismatch) || (k === 'next' && tooShort)} />
+            {k === 'next' && (tooShort || tried) && f.next.length < 10 && <p className="text-xs text-destructive">{f.next.length.toLocaleString('fa-IR')} از ۱۰ نویسه</p>}
             {k === 'confirm' && mismatch && <p className="text-xs text-destructive">تکرار رمز یکسان نیست</p>}
           </div>
         ))}
         <ErrorNote message={err} onClose={() => setErr('')} />
-        <Button type="submit" className="h-11 w-full" disabled={!valid || busy}>{busy ? <Loader2 className="ms-2 h-4 w-4 animate-spin" /> : <KeyRound className="ms-2 h-4 w-4" />}ثبت رمز جدید</Button>
+        <Button type="submit" className="h-11 w-full" disabled={busy}>{busy ? <Loader2 className="ms-2 h-4 w-4 animate-spin" /> : <KeyRound className="ms-2 h-4 w-4" />}ثبت رمز جدید</Button>
         <Button type="button" variant="ghost" className="w-full" onClick={signOut}>خروج</Button>
       </form>
     </div>

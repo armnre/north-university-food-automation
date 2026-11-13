@@ -77,7 +77,6 @@ export const deliveryStats = ep('GET', '/delivery/stats');
 // finance
 export const financeAdjust = ep('POST', '/finance/adjust');
 export const financeLedger = ep('GET', '/finance/ledger');
-export const financeRefundsDue = ep('GET', '/finance/refunds-due');
 export const paymentsNeedsReview = ep('GET', '/payments/needs-review');
 export const paymentResolve = ep('POST', '/payments/:id/resolve');
 export const paymentsReconcile = ep('POST', '/payments/reconcile');
@@ -142,13 +141,15 @@ export const reservationsAdminList = async (i?: In) => {
 export const studentMenu = ep('GET', '/me/menu');
 export const studentNotifications = ep('GET', '/me/notifications');
 export const studentReservations = ep('GET', '/me/reservations');
+export const studentReserve = ep('POST', '/me/reserve');
+export const studentWallet = ep('GET', '/me/wallet');
 export const studentProfile = ep('GET', '/me/profile');
 export const studentReissueQr = (i: In) => request('POST', '/me/reservations/:id/reissue-qr', i);
 export const studentCancelReservation = (i: In) => request('POST', '/me/reservations/:id/cancel', i);
 export const paymentResult = (paymentId: string): Promise<StudentCheckoutOutputType> => request('POST', '/payments/result', { paymentId });
 
 /**
- * Checkout: free orders settle immediately; otherwise the browser leaves for the Saman gateway and
+ * Checkout: credit-only orders settle immediately; otherwise the browser leaves for Zarinpal and
  * comes back to /payment/result (this promise then never resolves, by design).
  */
 export async function studentCheckout(i: In): Promise<StudentCheckoutOutputType> {

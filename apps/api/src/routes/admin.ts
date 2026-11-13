@@ -147,7 +147,13 @@ export function adminRoutes(app: FastifyInstance, db: Db) {
     const r = await db.execute<Record<string, unknown>>(
       sql`SELECT su.id, su.username, su.full_name, su.role, su.active, su.cafeteria_id, su.contractor_id, su.mobile, su.last_login_at, cf.name AS cafeteria_name FROM staff_users su LEFT JOIN cafeterias cf ON cf.id=su.cafeteria_id ORDER BY su.role, su.full_name`,
     );
+    const [cfs, cts] = await Promise.all([
+      db.execute<{ id: string; name: string }>(sql`SELECT id, name FROM cafeterias WHERE active ORDER BY name`),
+      db.execute<{ id: string; name: string }>(sql`SELECT id, name FROM contractors WHERE active ORDER BY name`),
+    ]);
     return {
+      cafeterias: cfs.rows.map((x) => ({ id: x.id, name: x.name })),
+      contractors: cts.rows.map((x) => ({ id: x.id, name: x.name })),
       staff: r.rows.map((x) => ({
         id: x.id,
         username: x.username,

@@ -65,7 +65,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reportsRead',
     'notificationsSend',
     'staffManage',
-    'auditRead',
   ],
   Finance: ['dashboardView', 'financeRead', 'financeWrite', 'reportsRead', 'reportsFinance', 'studentsRead'],
   // پیمانکار تغذیه: کل عملیات غذا (به‌جای نقش حذف‌شده‌ی مدیر تغذیه).

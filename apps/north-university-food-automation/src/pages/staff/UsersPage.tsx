@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Copy, Loader2, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { catalogList, staffList, staffSave } from '../../lib/api';
+import { staffList, staffSave } from '../../lib/api';
 import { Button } from '@project/components/ui/button';
 import { Input } from '@project/components/ui/input';
 import { Label } from '@project/components/ui/label';
@@ -20,8 +20,8 @@ const NONE = '__none__';
 
 export default function UsersPage() {
   const { data, error, loading, reload } = useLoad(async () => {
-    const [s, c] = await Promise.all([staffList(), catalogList()]);
-    return { ...(s as { staff: U[]; manageableRoles: string[] }), cafeterias: (c.cafeterias as Ref[]), contractors: (c.contractors as Ref[]) };
+    const s = await staffList();
+    return s as { staff: U[]; manageableRoles: string[]; cafeterias: Ref[]; contractors: Ref[] };
   });
   const [form, setForm] = useState<Form | null>(null);
   const [temp, setTemp] = useState<{ user: string; pass: string } | null>(null);

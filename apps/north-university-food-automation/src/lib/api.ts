@@ -34,12 +34,25 @@ async function request(method: string, path: string, input?: In, raw?: BodyInit)
     headers['x-csrf-token'] = csrfCookie() ?? '';
     if (!raw) { headers['content-type'] = 'application/json'; body = JSON.stringify(data); }
   }
-  const res = await fetch(url, { method, headers, body, credentials: 'include' });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45_000);
+  let res: Response;
+  try {
+    res = await fetch(url, { method, headers, body, credentials: 'include', signal: ctrl.signal });
+  } catch (err) {
+    const timeout = (err as Error)?.name === 'AbortError';
+    throw new ApiError(
+      timeout ? 'پاسخ سرور بیش از حد طول کشید. اتصال اینترنت را بررسی و دوباره تلاش کنید.'
+        : !navigator.onLine ? 'اتصال اینترنت شما قطع است. پس از برقراری اتصال دوباره تلاش کنید.'
+        : 'ارتباط با سرور برقرار نشد. چند لحظه بعد دوباره تلاش کنید.',
+      0, timeout ? 'TIMEOUT' : 'NETWORK');
+  } finally { clearTimeout(timer); }
   const json = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
     const e = json?.error ?? {};
     if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('session-expired'));
-    throw new ApiError(e.message || 'خطا در ارتباط با سرور. دوباره تلاش کنید.', res.status, e.code ?? 'ERROR', e.details);
+    const fallback = res.status >= 500 ? 'سرور موقتاً در دسترس نیست. چند دقیقه دیگر دوباره تلاش کنید.' : 'درخواست انجام نشد. دوباره تلاش کنید.';
+    throw new ApiError(e.message || fallback, res.status, e.code ?? 'ERROR', e.details);
   }
   return json;
 }

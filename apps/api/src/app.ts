@@ -72,6 +72,25 @@ export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<Fas
   });
   await app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute', keyGenerator: (req) => getClientIp(req, env.TRUSTED_PROXY_HOPS) });
 
+  const FIELD_FA: Record<string, string> = {
+    password: 'رمز عبور', currentPassword: 'رمز فعلی', newPassword: 'رمز جدید', username: 'نام کاربری', studentNumber: 'شماره دانشجویی',
+    nationalCode: 'کد ملی', nationalId: 'کد ملی', mobile: 'شماره موبایل', phone: 'شماره تلفن', email: 'ایمیل', firstName: 'نام', lastName: 'نام خانوادگی',
+    name: 'نام', title: 'عنوان', price: 'قیمت', amount: 'مبلغ', date: 'تاریخ', quantity: 'تعداد', captchaAnswer: 'کد امنیتی', captcha: 'کد امنیتی',
+    reason: 'علت', description: 'توضیحات', capacity: 'ظرفیت', mealType: 'وعده', code: 'کد',
+  };
+  const zodMessage = (err: ZodError) => {
+    const i = err.issues[0];
+    if (!i) return 'برخی از اطلاعات واردشده معتبر نیست؛ لطفاً فیلدها را بررسی کنید.';
+    const key = [...i.path].reverse().find((p) => typeof p === 'string') as string | undefined;
+    const label = key ? FIELD_FA[key] : undefined;
+    if (!label) return 'برخی از اطلاعات واردشده معتبر نیست؛ لطفاً فیلدها را بررسی کنید.';
+    const t = i.code as string;
+    const fa = /[\u0600-\u06FF]/.test(i.message);
+    if (t === 'too_small') return fa ? i.message : `${label} کوتاه‌تر یا کمتر از حد مجاز است.`;
+    if (t === 'too_big') return `${label} بیشتر از حد مجاز است.`;
+    if (t === 'invalid_type' && /required|undefined/i.test(i.message)) return `لطفاً ${label} را وارد کنید.`;
+    return fa ? i.message : `${label} معتبر نیست.`;
+  };
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError)
       return reply.status(err.status).send({ error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } });
@@ -79,7 +98,7 @@ export async function buildApp({ env, db, pool, gateway }: AppDeps): Promise<Fas
       return reply.status(400).send({
         error: {
           code: 'BAD_REQUEST',
-          message: `اطلاعات ارسالی معتبر نیست${err.issues[0]?.path.length ? ` (فیلد: ${err.issues.map((i) => i.path.join('.')).slice(0, 3).join('، ')})` : ''}.`,
+          message: zodMessage(err),
           details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
         },
       });

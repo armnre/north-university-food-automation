@@ -56,10 +56,15 @@ export const tehranLocalToIso = (v: string) => new Date(`${v}:00+03:30`).toISOSt
 
 const FALLBACK: Record<number, string> = {
   400: 'اطلاعات واردشده معتبر نیست.', 401: 'نشست شما معتبر نیست؛ دوباره وارد شوید.', 403: 'شما به این بخش دسترسی ندارید.',
-  404: 'مورد درخواستی یافت نشد.', 409: 'این مورد با اطلاعات موجود تداخل دارد.', 429: 'تعداد تلاش‌ها زیاد است؛ کمی بعد دوباره امتحان کنید.',
+  404: 'مورد درخواستی یافت نشد.', 409: 'این مورد با اطلاعات موجود تداخل دارد.', 413: 'حجم فایل یا اطلاعات ارسالی بیش از حد مجاز است.',
+  429: 'تعداد تلاش‌ها زیاد است؛ کمی بعد دوباره امتحان کنید.', 500: 'خطایی در سرور رخ داد. چند لحظه بعد دوباره تلاش کنید.',
+  502: 'سرور موقتاً در دسترس نیست. چند دقیقه دیگر دوباره تلاش کنید.', 503: 'سامانه در حال به‌روزرسانی یا شلوغ است. کمی بعد دوباره تلاش کنید.',
+  504: 'پاسخ سرور بیش از حد طول کشید. دوباره تلاش کنید.',
 };
 /** Turns raw API errors like `API call failed (401): {"message":"..."}` into a clean Persian sentence. */
 export function errMsg(e: unknown) {
+  const st = typeof e === 'object' && e && 'status' in e ? Number((e as { status: unknown }).status) : 0;
+  if (st >= 500 && FALLBACK[st] && !/[\u0600-\u06FF]/.test((e as Error).message ?? '')) return FALLBACK[st];
   let m = e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : String(e ?? '');
   const status = Number(m.match(/\((\d{3})\)/)?.[1] ?? 0);
   const json = m.indexOf('{');
@@ -68,7 +73,7 @@ export function errMsg(e: unknown) {
   }
   m = m.replace(/^API call failed[^:]*:\s*/i, '').trim();
   if (!m || /^(Internal|fetch|Failed to fetch|NetworkError|Unauthorized|Forbidden|Bad Request|Not Found)/i.test(m) || /[a-z]{4,}/i.test(m) && !/[\u0600-\u06FF]/.test(m))
-    return FALLBACK[status] ?? 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
+    return FALLBACK[status || st] ?? 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
   return m;
 }
 
